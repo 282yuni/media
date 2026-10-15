@@ -1,0 +1,9 @@
+anthropic>=1.14
+elevenlabs>=2.0
+sounddevice>=0.4.6
+numpy>=1.26
+pyyaml>=6.0
+python-dotenv>=1.0
+openpyxl>=3.1
+# 구글 시트를 쓸 때만 필요
+gspread>=6.0

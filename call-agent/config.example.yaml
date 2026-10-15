@@ -1,0 +1,70 @@
+# config.yaml 로 복사해서 쓰세요:  copy config.example.yaml config.yaml
+
+# ── 나(상담원) 정보 ──────────────────────────────────────────
+agent:
+  my_name: "홍길동"              # 통화에서 소개할 이름
+  company: "○○ 마케팅"           # 회사/소속
+  product: "치과 온라인 마케팅"   # 무엇을 소개하는 콜인지 한 줄
+  # 통화를 시작할 때 AI가 먼저 하는 말. {name}, {clinic} 은 고객 정보로 바뀝니다.
+  opening: "안녕하세요, {clinic} 맞으시죠? {company} {my_name}입니다. 원장님께 짧게 안내드릴 게 있어서 연락드렸어요."
+  # AI 사용 고지 문장 (opening 바로 뒤에 붙음). 비워두면 고지하지 않습니다.
+  # 2026년 1월 시행된 AI 기본법 등 때문에 켜 두는 걸 권장합니다. README 참고.
+  ai_disclosure: "참고로 이 통화는 AI 음성 비서가 먼저 응대하고 있어요. 필요하시면 바로 담당자 연결해 드릴게요."
+
+# ── 오디오 장치 (python main.py devices 로 이름 확인) ──────────
+audio:
+  # 상대방 목소리가 들어오는 장치 (휴대폰 연결 앱의 '스피커'를 이 가상 케이블로 설정)
+  call_input: "CABLE Output"
+  # AI 목소리를 내보낼 장치 (휴대폰 연결 앱의 '마이크'를 이 가상 케이블의 반대쪽으로 설정)
+  ai_output: "CABLE-A Input"
+  # 내가 헤드셋으로 같이 들을 장치 (비우면 모니터링 안 함)
+  monitor_output: ""
+  input_rate: 16000
+  # 말 끝 판정
+  speech_threshold: 0.015    # 이 볼륨(RMS) 이상이면 말하는 중. devices --meter 로 조정
+  end_silence_sec: 0.8       # 이만큼 조용하면 말이 끝난 것으로 봄
+  max_utterance_sec: 25
+  barge_in: true             # AI가 말하는 중에 상대가 말하면 AI가 멈춤
+  no_answer_timeout_sec: 12  # 상대가 이 시간 동안 아무 말도 없으면 "여보세요?" 한 번
+
+# ── 음성 (ElevenLabs) ──────────────────────────────────────
+voice:
+  voice_id: ""                       # clone-voice 명령이 끝나면 여기에 자동 저장됨
+  tts_model: "eleven_flash_v2_5"     # 지연 짧은 모델. 품질 우선이면 eleven_multilingual_v2
+  stt_model: "scribe_v1"
+  # 음성인식이 잘 틀리는 고유명사 (회사명, 상품명 등)
+  keyterms: ["임플란트", "교정", "네이버 플레이스"]
+
+# ── AI 두뇌 (Claude) ───────────────────────────────────────
+brain:
+  model: "claude-opus-5-5"
+  effort: "low"          # 통화는 빠른 응답이 중요해서 low. 답이 아쉬우면 medium
+  playbook: "playbook.md"
+
+# ── 고객 목록 ───────────────────────────────────────────────
+customers:
+  source: "excel"          # excel | csv | google
+  path: "data/customers.xlsx"   # excel/csv 일 때
+  sheet: ""                # 시트 이름 (비우면 첫 시트)
+  # google 일 때
+  google_sheet_url: ""
+  google_credentials: "google-service-account.json"
+  # 내 시트의 열 이름 → 프로그램이 쓰는 이름. 왼쪽은 고정, 오른쪽을 내 시트에 맞게 바꾸세요.
+  columns:
+    name: "담당자"
+    clinic: "치과명"
+    phone: "전화번호"
+    status: "상태"
+    memo: "메모"
+    last_call: "통화일시"
+  # 이 상태인 행은 'next' 에서 건너뜀
+  skip_status: ["거절", "계약", "번호오류", "수신거부"]
+
+# ── 전화 걸기 ───────────────────────────────────────────────
+dialer:
+  # adb: USB/무선 디버깅으로 연결된 안드로이드에 자동으로 전화 걸기 (scrcpy 미러링이면 이미 연결돼 있음)
+  # manual: 번호를 클립보드에 복사해 주면 내가 직접 걸기
+  mode: "manual"
+  adb_path: "adb"
+
+logs_dir: "logs"
