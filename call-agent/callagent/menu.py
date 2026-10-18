@@ -18,7 +18,9 @@ def run(*args: str) -> None:
 def main(profile: str = "") -> None:
     names = profiles()
     if not profile and names:
-        profile = "임플란트" if "임플란트" in names else names[0]
+        # 녹음을 넣은 프로필 우선 → 없으면 임플란트
+        recorded = [n for n in names if (ROOT / "profiles" / n / "clips" / "clips.yaml").exists()]
+        profile = recorded[0] if recorded else ("임플란트" if "임플란트" in names else names[0])
     while True:
         p = ["--profile", profile] if profile else []
         print("\n" + "=" * 46 + f"\n  전화상담   (프로필: {profile or '기본'})\n" + "=" * 46)

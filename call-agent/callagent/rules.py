@@ -53,7 +53,8 @@ class RuleBrain:
         asking_back = "?" in heard or re.search(r"(나요|까요|가요|어요\?|에요\?|예요|인가|뭐|얼마|어디|누구|언제)", heard)
         best, best_score = None, 0.0
         for i, sc in enumerate(self.scenarios):
-            if answering and not sc.get("always") and not asking_back:
+            # interrupt: true → 거절·망설임처럼 질문의 '대답'이 아닌 말이면 질문 중에도 그 상황으로 대응
+            if answering and not sc.get("always") and not sc.get("interrupt") and not asking_back:
                 continue
             hits = sum(1 for k in sc.get("keywords", []) if _norm(k) and _norm(k) in h)
             sim = max((difflib.SequenceMatcher(None, h, _norm(e)).ratio() for e in sc.get("examples", [])), default=0.0)
@@ -98,11 +99,15 @@ class RuleBrain:
                 text, why = self._next_step() if self.step < len(self.flow) else ("", "대답 기록")
             why = f"'{asked}' 대답 기록 → {why}"
         elif sc and asked and not sc.get("always") and not sc.get("ask"):
-            # 질문 도중 상대가 되물음 → 그 질문에 답하고 원래 질문을 다시
-            text = f"{self._pick(sc.get('name', '?'), sc.get('reply', []))} {self.last_question}".strip()
-            why = f"{sc.get('name')} (되물음에 답하고 '{asked}' 다시 질문)"
+            # 질문 도중 상대가 되묻거나 망설임 → 그 말에 먼저 대답하고 원래 질문을 다시
+            name = sc.get("name", "?")
+            text = self._pick(name, sc.get("reply", []))
             self.status = sc.get("status") or self.status
             self.handoff = bool(sc.get("handoff"))
+            self.ended = bool(sc.get("end")) or (bool(sc.get("end_on_repeat")) and self.used.get(name, 0) >= 2)
+            if not (self.ended or self.handoff):
+                text = f"{text} {self.last_question}".strip()
+            why = f"{name} (먼저 대답하고 '{asked}' 다시 질문)"
         elif sc:
             text, why = self._pick(sc.get("name", "?"), sc.get("reply", [])), sc.get("name", "?")
             self.handoff = bool(sc.get("handoff"))

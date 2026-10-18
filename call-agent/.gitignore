@@ -16,3 +16,4 @@ profiles/*
 python/
 py.tar.gz
 platform-tools/
+!profiles/연습녹음/

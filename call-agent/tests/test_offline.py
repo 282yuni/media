@@ -442,3 +442,26 @@ def test_implant_two_refusals_end_call():
     b, outs = _implant(["누구세요?", "저 신청한 적 없는데요", "됐어요 관심 없어요", "필요 없다니까요"])
     assert outs[2] == ["[클립:28]"] and not b.ended or True
     assert outs[-1] == ["[클립:29]"] and b.ended and b.status == "거절"
+
+
+def _practice(said):
+    from callagent.rules import RuleBrain
+    b = RuleBrain(load_config(None, "연습녹음"))
+    outs = []
+    for h in said:
+        outs.append(list(b.reply(h)))
+        if b.ended or b.handoff:
+            break
+    return b, outs
+
+
+def test_practice_profile_objections_mid_question():
+    b, outs = _practice(["네", "근데 얼마예요?", "좀 비싸네요", "생각해볼게요", "화요일 오후 세시요"])
+    assert outs[2] == ["[클립:43]", "[클립:44]", "[클립:45]", "[클립:46]", "[클립:5]"]  # 비싸다에 답하고 다시 질문
+    assert outs[3][-1] == "[클립:71]" and outs[4] == ["[클립:72]"] and b.ended
+    assert b.summarize("")["callback_time"] == "화요일 오후 세시요"
+
+
+def test_practice_profile_two_refusals_mid_question_end():
+    b, outs = _practice(["네", "관심 없어요", "필요 없다니까요"])
+    assert outs[-1] == ["[클립:58]"] and b.ended and b.status == "거절"

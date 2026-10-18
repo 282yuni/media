@@ -1,0 +1,13 @@
+# 테스트용: 이미 있는 7분짜리 연습 녹음(일반 상담 안내)으로 흐름만 시험해 보는 프로필.
+# 실제 치과 스크립트가 나오면 '임플란트' 프로필에 새로 녹음해서 쓰세요.
+engine: "free"
+agent:
+  my_name: ""
+  company: "상담실"
+  product: "상담 안내 (테스트)"
+  opening: "[클립:1] [클립:2]"     # 안녕하세요, 오늘 하루는 어떻게 보내세요? / 갑자기 연락드려서 놀라실 수도 있겠네요
+  ai_disclosure: ""
+  fillers: []                       # 이 녹음엔 짧은 "네~" 가 없어서 맞장구는 끔 (실제 녹음 때 꼭 넣기)
+  hello_again: ""
+customers:
+  columns: {name: "이름", clinic: "이름", phone: "전화번호", status: "상태", memo: "메모", last_call: "통화일시"}
