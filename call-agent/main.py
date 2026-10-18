@@ -210,8 +210,14 @@ def cmd_dial(cfg, args):
 
 
 def cmd_desktop(cfg, args):
-    from callagent.desktop import make_shortcut
-    make_shortcut()
+    from callagent.installer import make_shortcut
+    for m in make_shortcut():
+        print(f"바탕화면에 만들었습니다: {m}")
+
+
+def cmd_menu(cfg, args):
+    from callagent.menu import main as menu
+    menu(args.profile or "")
 
 
 def cmd_list(cfg, args):
@@ -300,6 +306,7 @@ def main():
     p = sub.add_parser("doctor"); p.add_argument("--dial", default="", help="시험 전화 걸 번호 (내 다른 폰 번호)"); p.set_defaults(fn=cmd_doctor)
     sub.add_parser("phones").set_defaults(fn=cmd_phones)
     sub.add_parser("desktop").set_defaults(fn=cmd_desktop)
+    sub.add_parser("menu").set_defaults(fn=cmd_menu)
     p = sub.add_parser("profile-new"); p.add_argument("name"); p.set_defaults(fn=cmd_profile_new)
     for name in ("dial", "coach"):
         p = sub.add_parser(name)
