@@ -72,3 +72,44 @@ def build_playbook(cfg: dict, transcripts: list[Path], out: Path) -> None:
     text = "".join(b.text for b in msg.content if b.type == "text")
     out.write_text(text, encoding="utf-8")
     print(f"완료 → {out}  (꼭 열어서 6번 '내가 채워야 할 정보'를 채워주세요)")
+
+
+SCRIPT_PROMPT = """\
+아래는 치과 1차 영업 콜 상담 스크립트다. 이걸로 AI가 실제 상담사처럼 전화를 받을 수 있게
+위와 같은 형식(1~6번)의 "플레이북"을 마크다운으로 만들어라.
+- 스크립트의 멘트는 단어 하나 바꾸지 말고 그대로 인용한다 (말투를 그대로 따라 해야 하므로).
+- 스크립트에 없는 흔한 상황(원장님 부재, 바쁨, 이미 업체 있음, 가격 문의, 자료 요청, 관심 없음, 수신거부,
+  "AI냐"는 질문, 잘 안 들림, 엉뚱한 질문)은 스크립트 말투에 맞춰 대답을 보충하되, 보충한 대답 앞에 (보충) 이라고 표시한다.
+- 스크립트에 가격·조건 같은 사실이 없으면 지어내지 말고 6번에 "확인 필요"로 남긴다.
+"""
+
+
+def read_script(path: Path) -> str:
+    if path.suffix.lower() == ".docx":
+        import zipfile
+        import xml.etree.ElementTree as ET
+        ns = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+        root = ET.fromstring(zipfile.ZipFile(path).read("word/document.xml"))
+        return "\n".join("".join(t.text or "" for t in p.iter(ns + "t")) for p in root.iter(ns + "p"))
+    for enc in ("utf-8-sig", "cp949"):  # 메모장 한글 저장(ANSI)도 읽기
+        try:
+            return path.read_text(encoding=enc)
+        except UnicodeDecodeError:
+            continue
+    raise RuntimeError(f"{path.name} 글자 인코딩을 못 읽었습니다. UTF-8 로 저장해 주세요.")
+
+
+def build_playbook_from_script(cfg: dict, script: Path, out: Path) -> None:
+    text = read_script(script)
+    client = anthropic.Anthropic()
+    print(f"{script.name} 로 플레이북을 만드는 중... (1~2분)")
+    with client.beta.messages.stream(
+        model=cfg["brain"].get("model", "claude-opus-5-5"), max_tokens=64000,
+        output_config={"effort": "high"}, betas=[FALLBACK_BETA], fallbacks="default",
+        messages=[{"role": "user", "content": PROMPT + "\n\n" + SCRIPT_PROMPT + "\n\n[상담 스크립트]\n" + text}],
+    ) as stream:
+        msg = stream.get_final_message()
+    if msg.stop_reason == "refusal":
+        raise RuntimeError("플레이북 생성이 거절되었습니다. 스크립트 내용을 확인해 주세요.")
+    out.write_text("".join(b.text for b in msg.content if b.type == "text"), encoding="utf-8")
+    print(f"완료 → {out}  ((보충) 표시된 대답과 6번 '확인 필요'를 꼭 확인해 주세요)")

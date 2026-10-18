@@ -40,8 +40,38 @@ SUMMARY_SCHEMA = {
 _SENTENCE_END = re.compile(r"(.+?[.!?~…]+[\"')]*\s+|.+?\n)", re.S)
 
 
+_CLIP = re.compile(r"\[클립:\d+\]")
+
+CLIP_RULES = {
+    "clips": """
+[녹음 문장 사용법 — 반드시 지킬 것]
+너는 문장을 새로 만들어 말할 수 없다. 상담원의 실제 녹음만 그대로 재생된다.
+아래 [녹음 문장 목록]에서 지금 상황에 가장 맞는 것을 1~3개 골라 [클립:번호] 형식으로만 답한다. 다른 글자는 쓰지 않는다.
+예: [클립:12] [클립:3]
+딱 맞는 녹음이 없으면 "잠시만요", "확인해서 다시 연락드릴게요" 같은 녹음을 고르고 끝에 {HANDOFF} 를 붙인다.
+상대가 AI냐고 물으면 AI 고지 녹음이 있으면 그걸 고르고, 없으면 {HANDOFF} 만 출력한다 (사람이라고 답하는 녹음은 절대 고르지 않는다).
+""",
+    "mixed": """
+[녹음 문장 사용법]
+아래 [녹음 문장 목록]은 상담원 실제 목소리 녹음이다. 상황에 맞는 게 있으면 문장을 쓰지 말고 [클립:번호] 로 고른다.
+딱 맞는 녹음이 없을 때만 짧게 직접 말한다 (그 부분은 복제 음성으로 읽힌다). 녹음과 직접 말하기를 섞어도 된다.
+""",
+}
+
+
 def _split_sentences(buf: str) -> tuple[list[str], str]:
-    """스트리밍 텍스트에서 완성된 문장만 떼어낸다. 나머지는 버퍼로."""
+    """스트리밍 텍스트에서 완성된 문장과 [클립:번호] 를 떼어낸다. 나머지는 버퍼로."""
+    out = []
+    while (m := _CLIP.search(buf)):
+        head = buf[:m.start()]
+        done, rest = _split_text(head)
+        out += done + ([rest.strip()] if rest.strip() else []) + [m.group(0)]
+        buf = buf[m.end():]
+    done, rest = _split_text(buf)
+    return out + done, rest
+
+
+def _split_text(buf: str) -> tuple[list[str], str]:
     out, pos = [], 0
     for m in _SENTENCE_END.finditer(buf):
         out.append(m.group(0).strip())
@@ -54,7 +84,7 @@ def _clean(text: str) -> str:
 
 
 class Brain:
-    def __init__(self, cfg: dict, playbook: str, customer: dict | None = None):
+    def __init__(self, cfg: dict, playbook: str, customer: dict | None = None, clips=None):
         self.cfg = cfg
         self.client = anthropic.Anthropic()
         b = cfg["brain"]
@@ -66,6 +96,9 @@ class Brain:
             {"type": "text", "text": RULES + f"\n상담원: {a['company']} {a['my_name']} / 용건: {a['product']}\n\n[플레이북]\n{playbook}",
              "cache_control": {"type": "ephemeral"}},
         ]
+        mode = cfg["voice"].get("mode", "clone")
+        if clips and mode in CLIP_RULES:
+            self.system[0]["text"] += CLIP_RULES[mode].format(HANDOFF=HANDOFF) + "\n[녹음 문장 목록]\n" + clips.catalog()
         if customer:
             info = "\n".join(f"- {k}: {v}" for k, v in customer.items() if v not in (None, "") and not k.startswith("_"))
             self.system.append({"type": "text", "text": f"[이번 통화 상대 정보 (고객 시트)]\n{info}"})
@@ -78,6 +111,17 @@ class Brain:
             model=self.model, output_config={"effort": self.effort},
             betas=[FALLBACK_BETA], fallbacks="default", **kw,
         )
+
+    def warm(self) -> None:
+        """통화 연결 전에 플레이북을 캐시에 올려 둔다 → 첫 대답이 빨라짐 (출력 토큰 비용 없음)."""
+        try:
+            self.client.beta.messages.create(
+                model=self.model, max_tokens=0, output_config={"effort": self.effort},
+                betas=[FALLBACK_BETA], fallbacks="default", system=self.system,
+                messages=[{"role": "user", "content": "(전화가 연결됨)"}],
+            )
+        except Exception as e:
+            print(f"   (캐시 예열 실패, 통화에는 지장 없음: {e})")
 
     def reply(self, heard: str) -> Iterator[str]:
         """상대방 말 → 내 대답을 문장 단위로 흘려 준다 (첫 문장부터 바로 TTS 시작 가능)."""

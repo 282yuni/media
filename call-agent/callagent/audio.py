@@ -4,6 +4,7 @@
 AI 목소리:     이 프로그램 → (ai_output) → 가상 케이블 → 휴대폰 연결 앱의 마이크
 """
 import queue
+from collections import deque
 import threading
 import time
 
@@ -49,6 +50,11 @@ class Listener:
         self.end_silence = a.get("end_silence_sec", 0.8)
         self.max_sec = a.get("max_utterance_sec", 25)
         self.device = find_device(a["call_input"], "input")
+        self.base_threshold = self.threshold
+        # 끼어들기: 0.3초 이상 계속 말해야 AI를 멈춤 (기침·잡음·"네" 맞장구로 AI 말이 잘리지 않게)
+        self.barge_blocks = int(a.get("barge_in_sec", 0.3) / self.BLOCK_SEC)
+        self._loud_run = 0
+        self.levels: deque[float] = deque(maxlen=int(10 / self.BLOCK_SEC))
         self.blocks: queue.Queue[np.ndarray] = queue.Queue()
         self.is_speaking = threading.Event()  # barge-in 감지용
         self.stream = sd.InputStream(
@@ -58,9 +64,23 @@ class Listener:
 
     def _cb(self, indata, frames, t, status):
         block = indata[:, 0].copy()
-        if rms(block) >= self.threshold:
+        level = rms(block)
+        self.levels.append(level)
+        self._loud_run = self._loud_run + 1 if level >= self.threshold else 0
+        if self._loud_run >= self.barge_blocks:
             self.is_speaking.set()
         self.blocks.put(block)
+
+    def adapt(self) -> None:
+        """최근 10초 소리 중 조용한 구간(하위 20%) 크기로 배경 잡음을 추정해 기준값을 자동 조정.
+        시끄러운 접수대에서도 잡음을 말로 착각하지 않게 하고, 조용해지면 다시 원래 기준으로 내린다."""
+        if len(self.levels) < 30:
+            return
+        floor = float(np.percentile(list(self.levels), 20))
+        new = max(self.base_threshold, min(floor * 3, self.base_threshold * 6))
+        if abs(new - self.threshold) > self.base_threshold * 0.5:
+            print(f"   (배경 잡음에 맞춰 말소리 기준 {self.threshold:.3f} → {new:.3f})")
+        self.threshold = new
 
     def __enter__(self):
         self.stream.start()
@@ -73,10 +93,12 @@ class Listener:
     def flush(self) -> None:
         while not self.blocks.empty():
             self.blocks.get_nowait()
+        self._loud_run = 0
         self.is_speaking.clear()
 
     def next_utterance(self, timeout: float | None = None, stop: threading.Event | None = None) -> np.ndarray | None:
         """한 발화가 끝날 때까지 기다렸다가 int16 배열로 돌려준다. timeout 동안 말이 없으면 None."""
+        self.adapt()
         pre_roll: list[np.ndarray] = []      # 말 시작 직전 0.3초도 같이 넣어야 첫 음절이 안 잘림
         speech: list[np.ndarray] = []
         silent_for = voiced = 0.0

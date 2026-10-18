@@ -1,5 +1,4 @@
 .env
-config.yaml
 playbook.md
 recordings/
 voice_samples/
@@ -7,3 +6,6 @@ logs/
 data/
 google-service-account.json
 __pycache__/
+clips/
+config*.yaml
+!config.example.yaml

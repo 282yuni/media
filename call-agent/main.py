@@ -3,7 +3,9 @@
   python main.py devices              오디오 장치 목록
   python main.py meter                상대방 소리 크기 확인 (speech_threshold 조정용)
   python main.py clone-voice          voice_samples/ 녹음으로 내 목소리 복제
+  python main.py clips 내녹음.mp3      내 녹음을 문장별로 잘라 그대로 쓰기 (변환 없음)
   python main.py say "안녕하세요"      복제된 내 목소리로 한 문장 들어보기
+  python main.py script 상담스크립트.txt 상담 스크립트만으로 playbook.md 생성 (녹음 없어도 됨)
   python main.py train                recordings/ 통화 녹음 → playbook.md 생성
   python main.py practice             키보드로 상대 역할을 하며 AI 응대 연습 (전화 X)
   python main.py list                 고객 목록 보기
@@ -45,6 +47,16 @@ def cmd_clone(cfg, args):
     print(f"완료! voice_id={vid}  → config.yaml 에 저장했습니다. `python main.py say \"안녕하세요\"` 로 들어보세요.")
 
 
+def cmd_clips(cfg, args):
+    from callagent.clips import ClipBank, cut
+    if args.file:
+        print("⚠ 본인 목소리 녹음만 쓰세요. 상대방 목소리 부분은 clips.yaml 에서 use: false 로 꺼주세요.")
+        cut(cfg, Path(args.file), noise_db=args.noise, min_silence=args.gap)
+    bank = ClipBank(cfg)
+    print(f"\n사용 중인 녹음 문장 {len(bank.items)}개:")
+    print(bank.catalog())
+
+
 def cmd_say(cfg, args):
     import time
     from callagent.audio import Speaker
@@ -65,6 +77,12 @@ def cmd_train(cfg, args):
     build_playbook(cfg, transcripts, resolve(cfg["brain"].get("playbook", "playbook.md")))
 
 
+def cmd_script(cfg, args):
+    """녹음 없이 상담 스크립트(txt/md/docx)만으로 플레이북 만들기."""
+    from callagent.trainer import build_playbook_from_script
+    build_playbook_from_script(cfg, Path(args.file), resolve(cfg["brain"].get("playbook", "playbook.md")))
+
+
 def cmd_practice(cfg, args):
     """전화 없이 플레이북 테스트. 내가 상대(치과) 역할로 타이핑하면 AI가 대답."""
     from callagent.brain import Brain
@@ -73,17 +91,38 @@ def cmd_practice(cfg, args):
     if args.row:
         from callagent.customers import CustomerBook
         customer = CustomerBook(cfg).get(args.row)
-    brain = Brain(cfg, load_playbook(cfg), customer)
+    from callagent.clips import TOKEN, ClipBank
+    mode = cfg["voice"].get("mode", "clone")
+    clips = ClipBank(cfg) if mode in ("clips", "mixed") else None
+    brain = Brain(cfg, load_playbook(cfg), customer, clips=clips)
     voice = speaker = None
     if args.voice:
         from callagent.audio import Speaker
         from callagent.voice import TTS_RATE, Voice
-        voice, speaker = Voice(cfg), Speaker(cfg["audio"].get("monitor_output", ""), TTS_RATE)
+        voice = Voice(cfg) if mode != "clips" else None
+        speaker = Speaker(cfg["audio"].get("monitor_output", ""), TTS_RATE)
+
+    def show(item):
+        m = TOKEN.fullmatch(item)
+        if m and clips and int(m.group(1)) in clips.items:
+            cid = int(m.group(1))
+            print(f"{item}({clips.text(cid)})", end=" ", flush=True)
+            if speaker:
+                speaker.write(clips.pcm(cid))
+            return
+        print(item if mode != "clips" else f"(녹음 없음: {item})", end=" ", flush=True)
+        if voice:
+            for pcm in voice.speak(item):
+                speaker.write(pcm)
     a = cfg["agent"]
     intro = fill(a["opening"], cfg, customer) + (" " + a["ai_disclosure"] if a.get("ai_disclosure") else "")
     print("치과 직원/원장님 역할로 입력하세요. (빈 줄: 종료)\n")
     hello = input("👤 상대: ").strip() or "여보세요"
-    print(f"🤖 AI: {intro}")
+    from callagent.clips import split_tokens
+    print("🤖 AI: ", end="")
+    for item in split_tokens(intro):
+        show(item)
+    print()
     brain.messages += [{"role": "user", "content": hello}, {"role": "assistant", "content": intro}]
     while True:
         heard = input("👤 상대: ").strip()
@@ -91,10 +130,7 @@ def cmd_practice(cfg, args):
             break
         print("🤖 AI: ", end="", flush=True)
         for s in brain.reply(heard):
-            print(s, end=" ", flush=True)
-            if voice:
-                for pcm in voice.speak(s):
-                    speaker.write(pcm)
+            show(s)
         print()
         if brain.handoff:
             print("   → (여기서 담당자 연결 알림이 울립니다)")
@@ -121,6 +157,8 @@ def run_call(cfg, book, customer, playbook, dialer) -> bool:
         return False
     if ans == "s":
         return True
+    session = CallSession(cfg, playbook, customer)
+    session.prepare()  # 신호음 울리는 동안 첫인사 소리·AI 캐시를 미리 준비 → 받자마자 바로 인사
     dialer.dial(customer["_phone"])
     ans = Console.ask("상대가 받으면 Enter / 안 받으면 n + Enter ▶ ").strip().lower()
     if ans == "n":
@@ -128,7 +166,6 @@ def run_call(cfg, book, customer, playbook, dialer) -> bool:
         book.record_result(customer["_row"], "부재", "전화 안 받음")
         print("→ '부재'로 기록")
         return True
-    session = CallSession(cfg, playbook, customer)
     session.run(ready_prompt=False)
     dialer.hang_up()
     if not session.transcript:
@@ -172,18 +209,22 @@ def cmd_call(cfg, args):
 
 def main():
     ap = argparse.ArgumentParser(description="치과 1차 콜 AI 대행")
+    ap.add_argument("--config", help="설정 파일 (전화기 2대면 두 번째 창에서 --config config2.yaml)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("devices").set_defaults(fn=cmd_devices)
     p = sub.add_parser("meter"); p.add_argument("--seconds", type=float, default=15); p.set_defaults(fn=cmd_meter)
     p = sub.add_parser("clone-voice"); p.add_argument("--folder", default="voice_samples"); p.set_defaults(fn=cmd_clone)
+    p = sub.add_parser("clips"); p.add_argument("file", nargs="?"); p.add_argument("--noise", type=int, default=-35)
+    p.add_argument("--gap", type=float, default=0.6, help="이 초 이상 쉬면 문장을 나눔"); p.set_defaults(fn=cmd_clips)
     p = sub.add_parser("say"); p.add_argument("text"); p.add_argument("--to-call", action="store_true"); p.set_defaults(fn=cmd_say)
     p = sub.add_parser("train"); p.add_argument("--folder", default="recordings"); p.set_defaults(fn=cmd_train)
+    p = sub.add_parser("script"); p.add_argument("file"); p.set_defaults(fn=cmd_script)
     p = sub.add_parser("practice"); p.add_argument("--row", type=int); p.add_argument("--voice", action="store_true"); p.set_defaults(fn=cmd_practice)
     sub.add_parser("list").set_defaults(fn=cmd_list)
     p = sub.add_parser("call"); p.add_argument("row", type=int); p.set_defaults(fn=cmd_call)
     p = sub.add_parser("next"); p.add_argument("--start", type=int); p.set_defaults(fn=cmd_call)
     args = ap.parse_args()
-    args.fn(load_config(), args)
+    args.fn(load_config(args.config), args)
 
 
 if __name__ == "__main__":

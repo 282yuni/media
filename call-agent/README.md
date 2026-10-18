@@ -13,6 +13,10 @@
                             └─ 통화 끝 → 요약 → 고객 시트에 상태·메모 기록 + 녹취 저장
 ```
 
+- **내 실제 녹음을 그대로** 재생하는 모드(기본) — 합성·변환 없음. 또는 복제 목소리, 둘 섞기
+- **상담 스크립트만 넣으면** 바로 플레이북 생성 (녹음 학습은 선택)
+- 신호음 울리는 동안 첫인사를 미리 준비 → 받자마자 인사 / 상대가 길게 말하면 바로 "네~" 맞장구
+- 배경 잡음에 맞춰 자동 조정, 짧은 잡음·맞장구로는 AI 말이 끊기지 않음 (0.3초 이상 말해야 멈춤)
 - 통화 중 언제든 `t` + Enter → AI가 멈추고 **내가 바로 이어서 통화**
 - 상대가 "담당자 바꿔주세요"라고 하거나 AI가 답하기 어려우면 **알림음이 울리고 나에게 넘김**
 - 상대가 AI가 말하는 중에 끼어들면 AI가 말을 멈추고 들음
@@ -25,6 +29,7 @@
 | 항목 | 용도 | 비용 |
 |---|---|---|
 | Python 3.10 이상 (Windows PC) | 프로그램 실행 | 무료 |
+| [ffmpeg](https://ffmpeg.org/download.html) | 녹음 파일 자르기 (`winget install ffmpeg`) | 무료 |
 | [Anthropic API 키](https://console.anthropic.com) | AI 상담 두뇌 (Claude) | 사용량만큼 |
 | [ElevenLabs](https://elevenlabs.io) 계정 + API 키 | 목소리 복제, 음성 인식, 음성 합성 | 목소리 복제는 Starter 요금제 이상 |
 | [VB-Audio Virtual Cable](https://vb-audio.com/Cable/) **2개** (CABLE + CABLE-A, 또는 VoiceMeeter) | 통화 소리를 프로그램으로 주고받기 | 무료/기부 |
@@ -69,7 +74,22 @@ python main.py meter        통화 중 상대가 말할 때 막대가 '말하는
 > VoiceMeeter를 쓰면 "AI 목소리 + 내 마이크"를 한 가상 마이크로 합칠 수 있어서 버튼 없이 바로 이어받을 수 있습니다.
 > 간단하게는 `t` 를 누른 뒤 휴대폰 연결 앱에서 통화를 휴대폰으로 넘겨 받으세요.
 
-## 4. 내 목소리 복제
+## 4-A. 내 녹음 그대로 쓰기 (기본, 추천)
+
+내가 상담 멘트를 읽은 녹음(mp3, m4a 등)을 넣으면 문장 단위로 잘라 둡니다. 통화 때 **소리를 바꾸지 않고 그대로** 재생합니다.
+
+```bat
+python main.py clips 내녹음.mp3
+```
+- `clips/clip_001.wav …` 와 `clips/clips.yaml`(번호별 문장)이 생깁니다
+- `clips.yaml` 을 열어 ① 상대방 목소리·잡음 줄은 `use: false` ② 틀린 글자 수정 (AI가 이 글을 보고 고릅니다)
+- 첫인사와 AI 고지도 녹음 번호로: config.yaml → `opening: "[클립:1] [클립:2]"`, `ai_disclosure: "[클립:30]"`
+- 녹음에 없는 말은 하지 않고 나에게 넘깁니다. 자주 넘어오는 상황은 그 대답을 녹음해서 `clips` 로 추가하세요
+  (`python main.py clips 추가녹음.mp3` — 기존 목록 뒤에 번호가 이어 붙습니다)
+- 녹음 팁: 한 문장 말하고 1초 쉬기. "네~", "아 그러시군요", "잠시만요" 같은 짧은 맞장구도 꼭 녹음 → `fillers: ["[클립:5]"]`
+- 녹음에 없는 말도 하게 하려면 `voice.mode: "mixed"` (그 부분만 아래 4번 복제 목소리)
+
+## 4. 내 목소리 복제 (mixed / clone 모드일 때만)
 
 `voice_samples/` 폴더를 만들고 **내 목소리만** 들어간 녹음 1~3분을 넣습니다.
 (통화 녹음은 상대 목소리가 섞여서 품질이 떨어져요. 평소 콜 하듯이 대본을 읽어 녹음하는 게 제일 좋습니다.)
@@ -79,7 +99,15 @@ python main.py clone-voice
 python main.py say "안녕하세요, 밝은미소치과 맞으시죠?"     내 헤드셋으로 들어보기
 ```
 
-## 5. 내 통화 녹음으로 학습 → 플레이북
+## 5-A. 상담 스크립트로 바로 시작
+
+```bat
+python main.py script 상담스크립트.txt      (txt, md, docx)
+```
+스크립트 멘트는 그대로 두고, 스크립트에 없는 흔한 상황(부재, 바쁨, 가격 문의, 수신거부 등)은 같은 말투로 보충해서
+`playbook.md` 를 만듭니다. 보충한 부분은 `(보충)` 표시가 붙으니 확인해 주세요.
+
+## 5. 내 통화 녹음으로 학습 → 플레이북 (선택)
 
 `recordings/` 폴더에 1차 콜 통화 녹음 파일(m4a, mp3, wav 등)을 넣습니다. 많을수록 좋아요 (10~30통 권장).
 거절, 부재, 바쁨, 가격 문의, 자료 요청처럼 **여러 상황이 골고루** 들어가면 좋습니다.
@@ -133,6 +161,17 @@ python main.py next          아직 안 한 고객부터 차례대로 (거절/�
    - `t` + Enter: 내가 직접 받기 / `e` + Enter: 종료
 4. 끝나면 요약이 나오고, Enter 하면 시트에 상태·메모 기록. 녹취는 `logs/` 에 저장
 
+## 8-A. 갤럭시 S8 / 전화기 2대
+
+- **S8 자동 걸기**: 설정 → 휴대전화 정보 → 소프트웨어 정보 → 빌드번호 7번 터치 → 개발자 옵션 → USB 디버깅 켜기.
+  PC에 [adb(platform-tools)](https://developer.android.com/tools/releases/platform-tools) 설치 후 config `dialer.mode: "adb"`.
+  `adb devices` 에 폰이 보이면 프로그램이 S8 유심(010 번호)으로 직접 걸고 끊습니다.
+- **S8 통화 소리를 PC로**: S8은 안드로이드 9까지 업데이트됩니다. "휴대폰과 연결(Link to Windows)" 앱을 Play 스토어에서 설치해서
+  PC에서 통화가 되는지 **먼저 확인**하세요 (PC 블루투스 필요). 이게 안 되면 이 프로그램은 쓸 수 없습니다. 제일 먼저 확인할 부분입니다.
+- **전화기 2대**: config.yaml 을 config2.yaml 로 복사해서 장치(가상 케이블 2쌍 더)·고객 시트를 따로 정하고, 창 두 개에서
+  `python main.py next` / `python main.py --config config2.yaml next` 로 실행합니다. 프로그램은 하나로 됩니다.
+  다만 "휴대폰과 연결" 앱은 PC 한 대에 폰 한 대만 붙으므로, **PC(노트북) 2대에 각각 폰 1대씩**이 가장 확실합니다.
+
 ## 9. 꼭 알아두실 것
 
 - **AI 사용 고지**: 2026년 1월부터 시행된 「인공지능 기본법」은 생성형 AI 결과물, 특히 실제와 구분하기 어려운 음성 등을
@@ -154,11 +193,14 @@ call-agent/
   main.py              실행 명령 모음
   config.example.yaml  설정 견본 (config.yaml 로 복사해서 사용)
   callagent/
-    audio.py           가상 케이블 입출력, 말 끝 감지, 끼어들기
+    audio.py           가상 케이블 입출력, 말 끝 감지, 잡음 자동 적응, 끼어들기
+    clips.py           내 녹음을 문장별로 자르고 그대로 재생
     voice.py           ElevenLabs 음성 인식 / 목소리 복제 / 음성 합성
     brain.py           Claude 상담 응답 + 통화 요약
     trainer.py         녹음 → 대본 → playbook.md
     customers.py       엑셀 / CSV / 구글 시트 읽기·쓰기
     dialer.py          전화 걸기 (수동 또는 adb)
-    session.py         통화 한 건 진행
+    session.py         통화 한 건 진행 (미리 준비, 맞장구 포함)
+  tests/               소리 장치·API 키 없이 도는 테스트 (python -m pytest tests -q)
+  AGENTS.md            Codex 등 코딩 AI용 작업 지침
 ```

@@ -7,8 +7,14 @@ ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = ROOT / "config.yaml"
 
 
-def load_config() -> dict:
+def load_config(path: str | None = None) -> dict:
+    """path 를 주면 그 설정 파일을 쓴다 (전화기 2대: config.yaml / config2.yaml 로 각각 실행)."""
+    global CONFIG_PATH
     load_dotenv(ROOT / ".env")
+    if path:
+        CONFIG_PATH = resolve(path)
+        if not CONFIG_PATH.exists():
+            raise SystemExit(f"설정 파일이 없습니다: {CONFIG_PATH}")
     path = CONFIG_PATH if CONFIG_PATH.exists() else ROOT / "config.example.yaml"
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)

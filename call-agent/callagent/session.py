@@ -1,5 +1,7 @@
 """통화 한 건 진행: 듣기 → 받아 적기 → 생각하기 → 내 목소리로 말하기 반복."""
 import queue
+import random
+import re
 import threading
 import time
 from datetime import datetime
@@ -7,9 +9,11 @@ from pathlib import Path
 
 from .audio import Listener, Mouth
 from .brain import Brain
+from .clips import TOKEN, ClipBank, split_tokens
 from .config import resolve
 from .voice import TTS_RATE, Ears, Voice
 
+NOISE_TEXT = re.compile(r"[\s\W음어으흠아]*")
 HELP = "  [Enter]만 누르면 아무 일 없음 | t + Enter: 내가 직접 받기(AI 멈춤) | e + Enter: 통화 종료"
 
 
@@ -76,12 +80,46 @@ class CallSession:
     def __init__(self, cfg: dict, playbook: str, customer: dict | None):
         self.cfg = cfg
         self.customer = customer
-        self.brain = Brain(cfg, playbook, customer)
+        self.mode = cfg["voice"].get("mode", "clone")
+        self.clips = ClipBank(cfg) if self.mode in ("clips", "mixed") else None
+        if self.mode == "clips" and not self.clips:
+            raise RuntimeError("녹음 문장이 없습니다. 먼저 `python main.py clips 내녹음.mp3` 를 실행하세요.")
+        self.voice = Voice(cfg) if self.mode != "clips" else None
+        self.brain = Brain(cfg, playbook, customer, clips=self.clips)
         self.ears = Ears(cfg)
-        self.voice = Voice(cfg)
         self.transcript: list[tuple[str, str]] = []
         self.barge_in = cfg["audio"].get("barge_in", True)
         self.no_answer = cfg["audio"].get("no_answer_timeout_sec", 12)
+        self.filler_min = cfg["audio"].get("filler_after_sec", 1.2)
+        self._intro: list | None = None
+        self._fillers: list = []
+        self._ready = threading.Event()
+
+    def _render(self, items: list[str]) -> list[tuple[list[bytes], str]]:
+        """문장/녹음번호들을 미리 소리로 만들어 메모리에 둔다 (통화 중 지연 0초)."""
+        out, prev = [], ""
+        for item in items:
+            audio, label = self.audio_for(item, prev)
+            if audio is not None:
+                out.append((list(audio), label))
+                prev = label
+        return out
+
+    def prepare(self) -> None:
+        """전화 거는 동안(신호음 울릴 때) 미리 준비: 첫인사 소리, 맞장구 소리, AI 캐시 예열."""
+        def work():
+            try:
+                a = self.cfg["agent"]
+                intro = split_tokens(fill(a["opening"], self.cfg, self.customer))
+                intro += split_tokens((a.get("ai_disclosure") or "").strip())
+                self._intro = self._render(intro)
+                self._fillers = [r for f in a.get("fillers", []) for r in self._render(split_tokens(f))]
+            except Exception as e:
+                print(f"   (미리 준비 실패, 통화 중에 만듭니다: {e})")
+            finally:
+                self._ready.set()
+        threading.Thread(target=work, daemon=True).start()
+        threading.Thread(target=self.brain.warm, daemon=True).start()
 
     def log(self, who: str, text: str) -> None:
         self.transcript.append((who, text))
@@ -95,13 +133,16 @@ class CallSession:
             if ctl.takeover.is_set() or ctl.end.is_set():
                 cut = True
                 break
-            for pcm in self.voice.speak(s, previous_text=prev):
+            audio, label = s if isinstance(s, tuple) else self.audio_for(s, prev)
+            if audio is None:
+                continue
+            for pcm in audio:
                 mouth.write(pcm)
                 if self.barge_in and listener.is_speaking.is_set():
                     cut = True
                     break
-            spoken.append(s)
-            prev = s
+            spoken.append(label)
+            prev = label
             if cut:
                 break
         if hasattr(sentences, "close"):
@@ -118,8 +159,24 @@ class CallSession:
             self.log("AI", text)
         return text
 
+    def audio_for(self, item: str, prev: str):
+        """[클립:번호] → 내 녹음 그대로, 일반 문장 → 복제 목소리. (소리 조각들, 기록용 글) 반환."""
+        m = TOKEN.fullmatch(item)
+        if m:
+            cid = int(m.group(1))
+            if self.clips and cid in self.clips.items:
+                return self.clips.chunks(cid), self.clips.text(cid)
+            print(f"   (없는 녹음 번호라 건너뜀: {item})")
+            return None, ""
+        if self.voice:
+            return self.voice.speak(item, previous_text=prev), item
+        print(f"   (녹음에 없는 말이라 재생 안 함: {item})")
+        return None, ""
+
     def run(self, ready_prompt: bool = True) -> None:
         a = self.cfg["agent"]
+        if not self._ready.is_set() and self._intro is None:
+            self.prepare()
         listener = Listener(self.cfg)
         mouth = Mouth(self.cfg, TTS_RATE)
         try:
@@ -137,8 +194,8 @@ class CallSession:
                     hello = self.ears.transcribe_pcm(first, listener.rate) or "여보세요"
                     self.log("상대", hello)
                 opening = fill(a["opening"], self.cfg, self.customer)
-                disclosure = (a.get("ai_disclosure") or "").strip()
-                intro = [opening] + ([disclosure] if disclosure else [])
+                self._ready.wait(timeout=10)
+                intro = self._intro or split_tokens(opening) + split_tokens((a.get("ai_disclosure") or "").strip())
                 said = self.say(intro, listener, mouth, ctl)
                 self.brain.messages += [{"role": "user", "content": hello},
                                         {"role": "assistant", "content": said or opening}]
@@ -153,13 +210,19 @@ class CallSession:
                         if silent_rounds >= 2:
                             print("상대가 응답이 없어 통화를 마칩니다.")
                             break
-                        self.say(["여보세요? 제 말 잘 들리세요?"], listener, mouth, ctl)
+                        self.say(split_tokens(a.get("hello_again", "여보세요? 제 말 잘 들리세요?")), listener, mouth, ctl)
                         continue
                     silent_rounds = 0
                     t0 = time.time()
+                    # 말이 길었으면 생각하는 동안 바로 "네~" 맞장구 (진짜 상담사처럼, 침묵 없애기)
+                    filler = None
+                    if self._fillers and len(utt) / listener.rate >= self.filler_min:
+                        filler = random.choice(self._fillers)
+                        for pcm in filler[0]:
+                            mouth.write(pcm)
                     heard = self.ears.transcribe_pcm(utt, listener.rate)
-                    if not heard:
-                        continue
+                    if not heard or NOISE_TEXT.fullmatch(heard):
+                        continue  # 잡음·한숨·"음" 같은 건 대답하지 않음
                     self.log("상대", heard)
                     said = self.say(self.brain.reply(heard), listener, mouth, ctl)
                     if self.brain.messages[-1]["role"] == "user":  # 말하다 끊긴 경우 기록 맞추기
