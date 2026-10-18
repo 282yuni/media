@@ -320,6 +320,8 @@ def test_phones_setup_writes_config_per_phone(tmp_path, monkeypatch):
     root.mkdir()
     shutil.copy(Path(__file__).resolve().parent.parent / "config.example.yaml", root / "config.example.yaml")
     monkeypatch.setattr(config, "ROOT", root)
+    from callagent import adbtool
+    monkeypatch.setattr(adbtool, "fetch_adb", lambda: "adb")
     monkeypatch.setattr(doctor, "adb_devices", lambda adb="adb": [
         {"serial": "S8SERIAL", "state": "device", "model": "SM_G950N", "android": "9"},
         {"serial": "PHONE2", "state": "device", "model": "SM_A525N", "android": "14"}])

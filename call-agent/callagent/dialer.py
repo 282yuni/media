@@ -33,7 +33,8 @@ class Dialer:
     def __init__(self, cfg: dict):
         d = cfg.get("dialer", {})
         self.mode = d.get("mode", "manual")
-        self.adb = d.get("adb_path", "adb")
+        from .adbtool import find_adb
+        self.adb = find_adb(d.get("adb_path", "adb"))
         # 폰 2대를 한 PC에 꽂으면 어느 폰인지 지정해야 함 (`adb devices` 에 나오는 일련번호)
         self.serial = d.get("adb_serial", "")
 

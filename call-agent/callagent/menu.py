@@ -31,6 +31,7 @@ def main(profile: str = "") -> None:
               "  7. 아무 번호로 걸기\n"
               "  8. 녹음 대본 보기\n"
               "  9. 프로필 바꾸기\n"
+              "  u. 프로그램 업데이트 (고친 버전 받기)\n"
               "  0. 끝내기")
         c = input("\n번호를 누르고 Enter: ").strip()
         if c == "1":
@@ -63,5 +64,13 @@ def main(profile: str = "") -> None:
                 print(f"  {i}. {n}")
             k = input("번호 (기본 설정은 0): ").strip()
             profile = names[int(k) - 1] if k.isdigit() and 0 < int(k) <= len(names) else ""
+        elif c.lower() == "u":
+            from .updater import update
+            try:
+                update()
+            except Exception as e:
+                print(f"업데이트 실패: {e}")
+            input("\n(Enter)")
+            return
         elif c == "0":
             return

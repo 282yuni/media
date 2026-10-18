@@ -65,10 +65,11 @@ def run(cfg: dict, dial: str = "") -> int:
 
     # 2. 휴대폰 (adb)
     d = cfg.get("dialer", {})
-    adb = d.get("adb_path", "adb")
+    from .adbtool import find_adb
+    adb = find_adb(d.get("adb_path", "adb"))
     if not shutil.which(adb):
         r.add(False if d.get("mode") == "adb" else None, "adb (자동 걸기)", "설치 안 됨",
-              "platform-tools 를 받아 압축 풀고 그 폴더를 config 의 dialer.adb_path 에 적거나 PATH 에 추가")
+              "메뉴 2번(폰 연결 설정)을 누르면 자동으로 받아서 설치합니다")
     else:
         try:
             phones = adb_devices(adb)
@@ -191,7 +192,11 @@ def run(cfg: dict, dial: str = "") -> int:
 
 def setup_phones(adb: str = "adb") -> None:
     """연결된 폰마다 설정 파일을 만든다: 1번째 폰 → config.yaml, 2번째 → config2.yaml"""
+    from .adbtool import fetch_adb, find_adb
     from .config import ROOT
+    adb = find_adb(adb)
+    if not shutil.which(adb):
+        adb = fetch_adb()
     phones = [p for p in adb_devices(adb) if p["state"] == "device"]
     if not phones:
         raise SystemExit("연결된 폰이 없습니다. USB 연결 후 폰 화면에서 'USB 디버깅 허용'을 눌러 주세요. (adb devices 로 확인)")
@@ -202,6 +207,7 @@ def setup_phones(adb: str = "adb") -> None:
         text = re.sub(r'(?m)^(\s*)mode: "manual"', r'\1mode: "adb"', text)
         text = re.sub(r'(?m)^(\s*adb_serial:\s*)"[^"]*"', rf'\1"{p["serial"]}"', text)
         if adb != "adb":
+            adb = adb.replace("\\", "/")
             text = re.sub(r'(?m)^(\s*adb_path:\s*)"[^"]*"', rf'\1"{adb}"', text)
         if i > 0:  # 두 번째 폰은 녹취·결과를 따로 (같은 엑셀을 동시에 쓰면 충돌)
             text = re.sub(r'(?m)^logs_dir: "logs"', 'logs_dir: "logs/phone2"', text)

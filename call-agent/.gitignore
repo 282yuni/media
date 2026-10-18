@@ -15,3 +15,4 @@ profiles/*
 !profiles/임플란트/
 python/
 py.tar.gz
+platform-tools/
