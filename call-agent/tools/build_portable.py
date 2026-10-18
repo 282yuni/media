@@ -59,7 +59,6 @@ README = """전화상담 완성본 — 먼저 읽어주세요
 def app_files() -> list[Path]:
     out = subprocess.run(["git", "ls-files", "-z"], cwd=APP, capture_output=True, text=True, check=True).stdout
     files = [APP / f for f in out.split("\0") if f and f.split("/")[0] not in SKIP]
-    files += sorted((APP / "models").rglob("*"))
     return [f for f in files if f.is_file()]
 
 

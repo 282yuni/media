@@ -62,9 +62,9 @@ def main() -> None:
         print("   Python 3.10 이상이 필요합니다. https://www.python.org/downloads/ 에서 새로 설치하세요.")
         return
 
-    portable = (ROOT.parent / "python" / "python.exe").exists()
+    portable = (ROOT.parent / "python" / "python.exe").exists() or (ROOT / "python" / "python.exe").exists()
     if portable:
-        step("완성본: 필요한 프로그램이 이미 들어 있습니다")
+        step("필요한 프로그램이 준비되어 있습니다")
     else:
         step("필요한 프로그램 설치 (몇 분 걸려요)")
         r = subprocess.run([sys.executable, "-m", "pip", "install", "-r", str(ROOT / "requirements.txt")])
