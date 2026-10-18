@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.modules.setdefault("sounddevice", types.ModuleType("sounddevice"))
 
 import numpy as np  # noqa: E402
+import yaml  # noqa: E402
 
 from callagent import session as S  # noqa: E402
 from callagent.audio import Listener  # noqa: E402
@@ -310,3 +311,21 @@ def test_free_mode_full_call(tmp_path, monkeypatch):
     assert call.brain.ended
     s = call.brain.summarize(call.text())
     assert s["status"] == "수신거부"
+
+
+def test_phones_setup_writes_config_per_phone(tmp_path, monkeypatch):
+    import shutil
+    from callagent import config, doctor
+    root = tmp_path / "proj"
+    root.mkdir()
+    shutil.copy(Path(__file__).resolve().parent.parent / "config.example.yaml", root / "config.example.yaml")
+    monkeypatch.setattr(config, "ROOT", root)
+    monkeypatch.setattr(doctor, "adb_devices", lambda adb="adb": [
+        {"serial": "S8SERIAL", "state": "device", "model": "SM_G950N", "android": "9"},
+        {"serial": "PHONE2", "state": "device", "model": "SM_A525N", "android": "14"}])
+    doctor.setup_phones()
+    c1 = yaml.safe_load((root / "config.yaml").read_text(encoding="utf-8"))
+    c2 = yaml.safe_load((root / "config2.yaml").read_text(encoding="utf-8"))
+    assert c1["dialer"] == {"mode": "adb", "adb_path": "adb", "adb_serial": "S8SERIAL"}
+    assert c2["dialer"]["adb_serial"] == "PHONE2" and c2["logs_dir"] == "logs/phone2"
+    assert c1["voice"]["mode"] == "clips"  # 다른 mode 설정은 건드리지 않음

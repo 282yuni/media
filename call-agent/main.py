@@ -1,5 +1,7 @@
 """치과 1차 콜 AI 대행 — 실행 진입점.
 
+  python main.py doctor               준비 상태 자가 점검 (결과: logs/doctor.txt)
+  python main.py phones               USB 로 연결된 폰 찾아서 폰별 설정 파일 만들기
   python main.py devices              오디오 장치 목록
   python main.py meter                상대방 소리 크기 확인 (speech_threshold 조정용)
   python main.py clone-voice          voice_samples/ 녹음으로 내 목소리 복제
@@ -147,6 +149,16 @@ def cmd_practice(cfg, args):
             break
 
 
+def cmd_doctor(cfg, args):
+    from callagent.doctor import run
+    sys.exit(1 if run(cfg, args.dial) else 0)
+
+
+def cmd_phones(cfg, args):
+    from callagent.doctor import setup_phones
+    setup_phones(cfg.get("dialer", {}).get("adb_path", "adb"))
+
+
 def cmd_list(cfg, args):
     from callagent.customers import CustomerBook
     for c in CustomerBook(cfg).all():
@@ -229,6 +241,8 @@ def main():
     p = sub.add_parser("script"); p.add_argument("file"); p.set_defaults(fn=cmd_script)
     p = sub.add_parser("practice"); p.add_argument("--row", type=int); p.add_argument("--voice", action="store_true"); p.set_defaults(fn=cmd_practice)
     sub.add_parser("list").set_defaults(fn=cmd_list)
+    p = sub.add_parser("doctor"); p.add_argument("--dial", default="", help="시험 전화 걸 번호 (내 다른 폰 번호)"); p.set_defaults(fn=cmd_doctor)
+    sub.add_parser("phones").set_defaults(fn=cmd_phones)
     p = sub.add_parser("call"); p.add_argument("row", type=int); p.set_defaults(fn=cmd_call)
     p = sub.add_parser("next"); p.add_argument("--start", type=int); p.set_defaults(fn=cmd_call)
     args = ap.parse_args()

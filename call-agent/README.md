@@ -44,6 +44,18 @@ copy config.example.yaml config.yaml
 copy scenarios.example.yaml scenarios.yaml
 ```
 
+## 0. 자가 점검 (막히면 이것부터)
+
+```bat
+python main.py phones                      USB로 연결된 폰을 찾아 폰별 설정 파일 자동 생성 (1대째 config.yaml, 2대째 config2.yaml)
+python main.py doctor                      준비 상태를 ✅/❌ 로 점검 → logs/doctor.txt
+python main.py doctor --dial 010XXXXXXXX   내 다른 번호로 시험 전화를 걸고 8초 뒤 끊어서 자동 걸기 확인
+python main.py --config config2.yaml doctor --dial 010XXXXXXXX   두 번째 폰 확인
+```
+`logs/doctor.txt` 내용을 Claude나 Codex에게 그대로 붙여 넣으면 무엇을 고칠지 알려줍니다.
+
+> USB 디버깅은 **전화 걸기·끊기**만 합니다. **통화 소리는 USB로 오지 않으므로** 아래 1번(블루투스) 또는 이어폰 단자 유선 연결이 따로 필요합니다.
+
 ## 1. 소리 길 연결
 
 | 설정하는 곳 | 값 |
