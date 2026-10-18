@@ -11,3 +11,4 @@ config*.yaml
 !config.example.yaml
 profiles/*
 !profiles/_template/
+!profiles/_template/playbook.md
