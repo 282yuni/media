@@ -4,10 +4,10 @@
   clips.yaml 을 열어 내 목소리가 아닌 줄(상대 목소리)은 use: false 로, 틀린 글자는 고쳐 둔다.
 """
 import re
-import subprocess
 import wave
 from pathlib import Path
 
+import numpy as np
 import yaml
 
 from .config import resolve
@@ -16,45 +16,55 @@ from .voice import TTS_RATE
 TOKEN = re.compile(r"\[클립:(\d+)\]")
 
 
-def _ffmpeg(*args: str) -> str:
-    res = subprocess.run(["ffmpeg", "-hide_banner", "-nostdin", *args], capture_output=True, text=True)
-    if res.returncode != 0:
-        raise RuntimeError("ffmpeg 실행 실패 (설치 확인: https://ffmpeg.org): " + res.stderr[-500:])
-    return res.stderr
-
-
-def _duration(src: Path) -> float:
-    out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(src)],
-                         capture_output=True, text=True)
-    return float(out.stdout.strip())
-
-
-def _detect(src: Path, start: float, end: float, noise_db: int, min_silence: float) -> list[tuple[float, float]]:
-    """[start, end] 구간에서 조용한 부분을 기준으로 말 덩어리 (시작, 끝) 초 목록."""
-    log = _ffmpeg("-ss", f"{start:.2f}", "-to", f"{end:.2f}", "-i", str(src),
-                  "-af", f"silencedetect=noise={noise_db}dB:d={min_silence}", "-f", "null", "-")
-    starts = [start + float(x) for x in re.findall(r"silence_start: ([\d.]+)", log)]
-    ends = [start + float(x) for x in re.findall(r"silence_end: ([\d.]+)", log)]
-    segs, cur = [], start
-    for s, e in zip(starts, ends + [end]):
-        if s - cur >= 0.4:
-            segs.append((max(start, cur - 0.1), min(end, s + 0.1)))  # 앞뒤 0.1초 여유 → 첫 음절 안 잘림
-        cur = e
-    if end - cur >= 0.4:
-        segs.append((max(start, cur - 0.1), end))
-    return segs
-
-
-def find_segments(src: Path, noise_db: int = -35, min_silence: float = 0.6,
-                  max_len: float = 12.0) -> list[tuple[float, float]]:
-    """문장 단위로 자르기. 12초가 넘게 이어 말한 덩어리는 더 짧은 쉼(0.3초) 기준으로 한 번 더 자른다."""
+def decode(src: Path, rate: int = TTS_RATE) -> np.ndarray:
+    """녹음 파일(mp3, m4a, wav …)을 모노 int16 로. 소리 자체는 바꾸지 않고 형식만 맞춘다. (ffmpeg 설치 필요 없음)"""
+    import av
     out = []
-    for s, e in _detect(src, 0.0, _duration(src), noise_db, min_silence):
-        if e - s > max_len:
-            out += _detect(src, s, e, noise_db, 0.3) or [(s, e)]
+    with av.open(str(src)) as f:
+        res = av.AudioResampler(format="s16", layout="mono", rate=rate)
+        for frame in f.decode(audio=0):
+            for r in res.resample(frame):
+                out.append(r.to_ndarray().reshape(-1))
+        for r in res.resample(None):
+            out.append(r.to_ndarray().reshape(-1))
+    return np.concatenate(out).astype(np.int16) if out else np.zeros(0, np.int16)
+
+
+def _detect(db: np.ndarray, start: int, end: int, noise_db: float, min_silence: float, hop: float) -> list[tuple[int, int]]:
+    """[start, end) 프레임 구간에서 noise_db 보다 조용한 게 min_silence 초 이상이면 끊는다 → 말 덩어리 (시작, 끝) 프레임."""
+    need = int(min_silence / hop)
+    segs, cur, quiet = [], None, 0
+    for i in range(start, end):
+        if db[i] > noise_db:
+            if cur is None:
+                cur = i
+            quiet = 0
+        elif cur is not None:
+            quiet += 1
+            if quiet >= need:
+                segs.append((cur, i - quiet + 1))
+                cur, quiet = None, 0
+    if cur is not None:
+        segs.append((cur, end - quiet))
+    pad = int(0.1 / hop)  # 앞뒤 0.1초 여유 → 첫 음절 안 잘림
+    return [(max(start, s - pad), min(end, e + pad)) for s, e in segs if (e - s) * hop >= 0.4]
+
+
+def find_segments(src, noise_db: float = -35, min_silence: float = 0.6,
+                  max_len: float = 12.0, pcm: np.ndarray | None = None) -> list[tuple[float, float]]:
+    """문장 단위로 자르기 (초 단위 목록). 12초 넘게 이어 말한 덩어리는 더 짧은 쉼(0.3초)으로 한 번 더 자른다."""
+    pcm = decode(src) if pcm is None else pcm
+    hop = 0.01
+    n = int(TTS_RATE * hop)
+    frames = pcm[: len(pcm) // n * n].astype(np.float32).reshape(-1, n) / 32768.0
+    db = 20 * np.log10(np.sqrt(np.mean(frames ** 2, axis=1)) + 1e-9)
+    out = []
+    for s, e in _detect(db, 0, len(db), noise_db, min_silence, hop):
+        if (e - s) * hop > max_len:
+            out += _detect(db, s, e, noise_db, 0.3, hop) or [(s, e)]
         else:
             out.append((s, e))
-    return out
+    return [(s * hop, e * hop) for s, e in out]
 
 
 def cut(cfg: dict, src: Path, noise_db: int = -35, min_silence: float = 0.6) -> Path:
@@ -64,7 +74,8 @@ def cut(cfg: dict, src: Path, noise_db: int = -35, min_silence: float = 0.6) -> 
     catalog = yaml.safe_load(catalog_path.read_text(encoding="utf-8")) if catalog_path.exists() else []
     next_id = max((c["id"] for c in catalog), default=0) + 1
 
-    segs = find_segments(src, noise_db, min_silence)
+    pcm = decode(src)
+    segs = find_segments(src, noise_db, min_silence, pcm=pcm)
     print(f"{src.name}: 문장 덩어리 {len(segs)}개를 찾았습니다.")
     try:
         from .engine import make_ears
@@ -78,14 +89,13 @@ def cut(cfg: dict, src: Path, noise_db: int = -35, min_silence: float = 0.6) -> 
         next_id += 1
         wav = out_dir / f"clip_{cid:03}.wav"
         # 소리 자체는 손대지 않고 재생용 형식(모노 24kHz)으로만 바꿔 저장
-        _ffmpeg("-y", "-ss", f"{start:.2f}", "-to", f"{end:.2f}", "-i", str(src),
-                "-ac", "1", "-ar", str(TTS_RATE), "-sample_fmt", "s16", str(wav))
-        text = ""
-        if ears:
-            import numpy as np
-            with wave.open(str(wav)) as w:
-                pcm = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16)
-            text = ears.transcribe_pcm(pcm, TTS_RATE)
+        piece = pcm[int(start * TTS_RATE):int(end * TTS_RATE)]
+        with wave.open(str(wav), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(TTS_RATE)
+            w.writeframes(piece.tobytes())
+        text = ears.transcribe_pcm(piece, TTS_RATE) if ears else ""
         catalog.append({"id": cid, "file": wav.name, "text": text, "use": True,
                         "source": f"{src.name} {start:.1f}~{end:.1f}초"})
         print(f"  [{cid:3}] {end - start:4.1f}초  {text}")

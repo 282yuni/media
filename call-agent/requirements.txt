@@ -4,7 +4,8 @@ numpy>=1.26
 pyyaml>=6.0
 python-dotenv>=1.0
 openpyxl>=3.1
-faster-whisper>=1.0
-# 구글 시트를 쓸 때만
-gspread>=6.0
-# 유료(ai) 모드를 쓸 때만:  pip install anthropic elevenlabs
+sherpa-onnx>=1.10       # 무료 한국어 음성 인식
+av>=12                  # 녹음 파일 읽기 (ffmpeg 설치 필요 없음)
+# 선택: pip install faster-whisper   (stt.local_engine: "whisper")
+# 선택: pip install gspread          (구글 시트)
+# 선택: pip install anthropic elevenlabs   (유료 ai 모드)

@@ -62,20 +62,21 @@ def main() -> None:
         print("   Python 3.10 이상이 필요합니다. https://www.python.org/downloads/ 에서 새로 설치하세요.")
         return
 
-    step("필요한 프로그램 설치 (몇 분 걸려요)")
-    r = subprocess.run([sys.executable, "-m", "pip", "install", "-r", str(ROOT / "requirements.txt")])
-    if r.returncode != 0:
-        print("   ❌ 설치 중 오류가 났습니다. 위의 빨간 글씨 마지막 몇 줄을 캡처해서 보내주세요.")
-
-    step("ffmpeg (녹음 자르기용) 확인")
-    if shutil.which("ffmpeg"):
-        print("   ✅ 있음")
-    elif shutil.which("winget"):
-        subprocess.run(["winget", "install", "-e", "--id", "Gyan.FFmpeg",
-                        "--accept-source-agreements", "--accept-package-agreements"])
-        print("   (설치했다면 이 창을 닫고 새로 열어야 인식됩니다)")
+    portable = (ROOT.parent / "python" / "python.exe").exists()
+    if portable:
+        step("완성본: 필요한 프로그램이 이미 들어 있습니다")
     else:
-        print("   ⚠ https://ffmpeg.org/download.html 에서 설치해 주세요.")
+        step("필요한 프로그램 설치 (몇 분 걸려요)")
+        r = subprocess.run([sys.executable, "-m", "pip", "install", "-r", str(ROOT / "requirements.txt")])
+        if r.returncode != 0:
+            print("   ❌ 설치 중 오류가 났습니다. 위의 빨간 글씨 마지막 몇 줄을 캡처해서 보내주세요.")
+    try:
+        import sherpa_onnx  # noqa: F401
+        print("   ✅ 음성 인식 준비됨")
+    except Exception as e:
+        print(f"   ❌ 음성 인식을 불러오지 못했습니다: {e}\n"
+              "      Microsoft Visual C++ 재배포 패키지를 설치한 뒤 다시 실행하세요:\n"
+              "      https://aka.ms/vs/17/release/vc_redist.x64.exe")
 
     step("설정 파일 준비")
     for src, dst in [("config.example.yaml", "config.yaml"), ("scenarios.example.yaml", "scenarios.yaml")]:
@@ -83,6 +84,21 @@ def main() -> None:
             shutil.copy(ROOT / src, ROOT / dst)
             print(f"   {dst} 만듦")
     (ROOT / "data").mkdir(exist_ok=True)
+    xlsx = ROOT / "data" / "customers.xlsx"
+    if not xlsx.exists():
+        try:
+            import openpyxl
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "고객"
+            ws.append(["이름", "전화번호", "상태", "메모", "통화일시"])
+            ws.append(["(예시) 홍길동", "010-0000-0000", "", "", ""])
+            for col, width in zip("ABCDE", (14, 16, 10, 60, 18)):
+                ws.column_dimensions[col].width = width
+            wb.save(xlsx)
+            print(f"   고객 엑셀 견본 만듦: {xlsx}  (이름·전화번호를 채워 넣으세요)")
+        except Exception as e:
+            print(f"   (고객 엑셀 견본을 못 만들었습니다: {e})")
 
     step("바탕화면 바로가기 만들기")
     made = make_shortcut()

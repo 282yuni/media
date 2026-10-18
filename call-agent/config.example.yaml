@@ -6,8 +6,12 @@ engine: "free"
 
 # ── 무료 모드 설정 ──────────────────────────────────────────
 stt:
-  local_model: "small"     # tiny < base < small < medium. 클수록 정확하지만 느림. PC가 느리면 base
-  device: "cpu"            # NVIDIA 그래픽카드가 있으면 "cuda" (훨씬 빠름)
+  local_engine: "sherpa"   # sherpa: 같이 들어 있는 한국어 모델(models/ko), 바로 동작 / whisper: faster-whisper
+  model_dir: "models/ko"
+  threads: 4
+  # 아래는 local_engine: "whisper" 일 때만
+  local_model: "small"     # tiny < base < small < medium. 클수록 정확하지만 느림
+  device: "cpu"            # NVIDIA 그래픽카드가 있으면 "cuda"
   compute_type: "int8"
 rules:
   scenarios: "scenarios.yaml"

@@ -56,13 +56,12 @@ def run(cfg: dict, dial: str = "") -> int:
     r.add(sys.version_info >= (3, 10), "Python", platform.python_version(), "python.org 에서 3.10 이상 설치")
     r.add(True, "운영체제", f"{platform.system()} {platform.release()}")
     for mod, why in [("numpy", "기본"), ("yaml", "기본"), ("openpyxl", "엑셀"), ("sounddevice", "소리 입출력"),
-                     ("faster_whisper", "무료 음성 인식")]:
+                     ("sherpa_onnx", "무료 음성 인식"), ("av", "녹음 파일 읽기")]:
         try:
             importlib.import_module(mod)
             r.add(True, f"라이브러리 {mod}")
         except Exception as e:
             r.add(False, f"라이브러리 {mod} ({why})", str(e)[:80], "pip install -r requirements.txt")
-    r.add(bool(shutil.which("ffmpeg")), "ffmpeg (녹음 자르기)", "", "winget install ffmpeg 후 창을 새로 열기")
 
     # 2. 휴대폰 (adb)
     d = cfg.get("dialer", {})
@@ -176,9 +175,9 @@ def run(cfg: dict, dial: str = "") -> int:
             ears.transcribe_pcm(np.zeros(16000 * 3, np.int16), 16000)
             spent = time.time() - t0
             r.add(spent < 3 or None, "음성 인식 속도 (3초 말 받아 적기)", f"{spent:.1f}초 (모델 준비 {load:.0f}초)",
-                  "느리면 config 의 stt.local_model 을 base 로 (그래픽카드 있으면 device: cuda)")
+                  "PC가 느리면 다른 프로그램을 닫고 다시 점검")
         except Exception as e:
-            r.add(False, "무료 음성 인식", str(e)[:120], "인터넷 연결 후 다시 (처음 한 번 모델을 내려받음)")
+            r.add(False, "무료 음성 인식", str(e)[:120], "완성본 ZIP 을 다시 풀어 models 폴더가 있는지 확인")
 
     verdict = "모두 준비됨! python main.py practice 로 연습해 보세요." if r.fails == 0 else f"❌ {r.fails}개를 고쳐야 합니다."
     print(f"\n{verdict}")

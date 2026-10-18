@@ -1,5 +1,7 @@
 @echo off
 cd /d "%~dp0"
 title CallAgent
-python main.py menu
+set PY=python
+if exist "%~dp0..\python\python.exe" set PY="%~dp0..\python\python.exe"
+%PY% main.py menu
 if errorlevel 1 pause

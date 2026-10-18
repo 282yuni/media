@@ -13,3 +13,4 @@ profiles/*
 !profiles/_template/
 !profiles/_template/playbook.md
 !profiles/임플란트/
+models/

@@ -116,8 +116,21 @@ def cmd_practice(cfg, args):
         voice = Voice(cfg) if mode != "clips" else None
         speaker = Speaker(cfg["audio"].get("monitor_output", ""), TTS_RATE)
 
+    # 아직 녹음 전이면 녹음 대본 문장으로 보여주기 (녹음 전에도 흐름 연습 가능)
+    import re as _re
+    script_lines = {}
+    sp = Path(cfg["voice"].get("clips_dir", "clips")).parent / "녹음대본.txt"
+    if sp.exists():
+        for line in sp.read_text(encoding="utf-8").splitlines():
+            mm = _re.match(r"^(\d+)\s+(.*)", line)
+            if mm:
+                script_lines[int(mm.group(1))] = mm.group(2).strip()
+
     def show(item):
         m = TOKEN.fullmatch(item)
+        if m and not (clips and int(m.group(1)) in clips.items) and int(m.group(1)) in script_lines:
+            print(f"{script_lines[int(m.group(1))]}", end=" ", flush=True)
+            return
         if m and clips and int(m.group(1)) in clips.items:
             cid = int(m.group(1))
             print(f"{item}({clips.text(cid)})", end=" ", flush=True)
