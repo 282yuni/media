@@ -92,5 +92,6 @@ dialer:
   # manual: 번호를 클립보드에 복사해 주면 내가 직접 걸기
   mode: "manual"
   adb_path: "adb"
+  adb_serial: ""     # 폰 2대를 한 PC에 연결할 때: `adb devices` 에 나오는 이 폰의 일련번호
 
 logs_dir: "logs"

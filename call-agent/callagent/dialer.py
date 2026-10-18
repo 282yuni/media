@@ -34,9 +34,12 @@ class Dialer:
         d = cfg.get("dialer", {})
         self.mode = d.get("mode", "manual")
         self.adb = d.get("adb_path", "adb")
+        # 폰 2대를 한 PC에 꽂으면 어느 폰인지 지정해야 함 (`adb devices` 에 나오는 일련번호)
+        self.serial = d.get("adb_serial", "")
 
     def _adb(self, *args: str) -> None:
-        subprocess.run([self.adb, "shell", *args], check=True, capture_output=True, timeout=10)
+        target = ["-s", self.serial] if self.serial else []
+        subprocess.run([self.adb, *target, "shell", *args], check=True, capture_output=True, timeout=10)
 
     def dial(self, phone: str) -> None:
         number = normalize(phone)
