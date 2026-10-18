@@ -77,14 +77,15 @@ class Controls:
 
 
 class CallSession:
-    def __init__(self, cfg: dict, playbook: str, customer: dict | None):
+    def __init__(self, cfg: dict, playbook: str, customer: dict | None, coach: bool = False):
         self.cfg = cfg
+        self.coach = coach  # 코치 모드: AI는 말하지 않고, 내가 할 말을 화면에 보여줌
         self.customer = customer
         self.mode = voice_mode(cfg)
         self.clips = ClipBank(cfg) if self.mode in ("clips", "mixed") else None
-        if self.mode == "clips" and not self.clips:
+        if self.mode == "clips" and not self.clips and not coach:
             raise RuntimeError("녹음 문장이 없습니다. 먼저 `python main.py clips 내녹음.mp3` 를 실행하세요.")
-        if self.mode != "clips":
+        if self.mode != "clips" and not coach:
             from .voice import Voice
             self.voice = Voice(cfg)
         else:
@@ -177,7 +178,36 @@ class CallSession:
         print(f"   (녹음에 없는 말이라 재생 안 함: {item})")
         return None, ""
 
+    def run_coach(self) -> None:
+        """곤란한 통화를 내가 직접 할 때: 상대 말을 받아 적고, 할 말을 화면에 띄워 준다."""
+        listener = Listener(self.cfg)
+        with listener:
+            listener.flush()
+            ctl = Controls()
+            print("🎧 코치 모드 — 상대 말을 듣고 할 말을 추천합니다. 내가 직접 말하세요. (끝: e + Enter)")
+            while not ctl.end.is_set():
+                utt = listener.next_utterance(timeout=1.0, stop=ctl.end)
+                if utt is None:
+                    continue
+                heard = self.ears.transcribe_pcm(utt, listener.rate)
+                if not heard or NOISE_TEXT.fullmatch(heard):
+                    continue
+                self.log("상대", heard)
+                tips = []
+                for item in self.brain.reply(heard):
+                    m = TOKEN.fullmatch(item)
+                    tips.append(self.clips.text(int(m.group(1))) if m and self.clips else item)
+                tip = " ".join(t for t in tips if t)
+                if tip:
+                    print(f"\n   💡 이렇게 말해 보세요:  {tip}\n")
+                    self.transcript.append(("추천", tip))
+                if self.brain.handoff:
+                    print("   ⚠ 이 부분은 직접 판단하세요 (인증·결제·약속 등)")
+            ctl.end.set()
+
     def run(self, ready_prompt: bool = True) -> None:
+        if self.coach:
+            return self.run_coach()
         a = self.cfg["agent"]
         if not self._ready.is_set() and self._intro is None:
             self.prepare()
@@ -250,12 +280,13 @@ class CallSession:
             mouth.close()
 
     def text(self) -> str:
-        return "\n".join(f"{'상담원(AI)' if w == 'AI' else '상대'}: {t}" for w, t in self.transcript)
+        names = {"AI": "상담원(AI)", "추천": "추천 대답"}
+        return "\n".join(f"{names.get(w, '상대')}: {t}" for w, t in self.transcript)
 
     def save_log(self, summary: dict | None) -> Path:
         logs = resolve(self.cfg.get("logs_dir", "logs"))
         logs.mkdir(parents=True, exist_ok=True)
-        who = (self.customer or {}).get("_clinic") or "test"
+        who = re.sub(r"[^\w가-힣-]", "_", (self.customer or {}).get("_clinic") or "test")
         path = logs / f"{datetime.now():%Y%m%d_%H%M%S}_{who}.txt"
         body = self.text()
         if summary:

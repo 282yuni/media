@@ -18,6 +18,9 @@ RULES = """\
 - 플레이북에 없는 사실(가격, 조건, 약속, 일정 확정 등)은 지어내지 않는다. 모르면 "그 부분은 정확히 확인해서 다시 연락드릴게요"라고 한다.
 - 상대가 "AI야?", "기계야?", "사람이에요?"처럼 묻으면 절대 사람이라고 하지 않는다. AI 음성 비서라고 솔직히 말하고, 원하면 담당자를 연결해 드린다고 한다.
 - 상대가 그만 연락하라고 하거나, 명확히 거절하면 정중히 인사하고 끝낸다.
+- 본인 인증(주민번호, 카드번호, 인증번호, 계좌 비밀번호), 결제·송금, 계약 체결·동의, 법적 책임이 생기는 약속은
+  절대 대신 하지 않는다. 그런 순간이 오면 "그 부분은 제가 직접 말씀드릴게요"라고 하고 {HANDOFF} 를 붙인다.
+- [이번 통화 목적]이 있으면 그 목표와 한계를 지킨다. 목적에 없는 것을 새로 약속하거나 양보하지 않는다.
 
 특수 표시 (음성으로 읽히지 않고 프로그램이 처리함):
 - 대화를 마무리하는 마지막 인사를 했으면 답 맨 끝에 {END} 를 붙인다.
@@ -99,6 +102,9 @@ class Brain:
         mode = cfg["voice"].get("mode", "clone")
         if clips and mode in CLIP_RULES:
             self.system[0]["text"] += CLIP_RULES[mode].format(HANDOFF=HANDOFF) + "\n[녹음 문장 목록]\n" + clips.catalog()
+        brief = (cfg.get("_brief") or "").strip()
+        if brief:
+            self.system.append({"type": "text", "text": f"[이번 통화 목적 — 사용자가 직접 적은 것]\n{brief}"})
         if customer:
             info = "\n".join(f"- {k}: {v}" for k, v in customer.items() if v not in (None, "") and not k.startswith("_"))
             self.system.append({"type": "text", "text": f"[이번 통화 상대 정보 (고객 시트)]\n{info}"})

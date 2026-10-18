@@ -329,3 +329,73 @@ def test_phones_setup_writes_config_per_phone(tmp_path, monkeypatch):
     assert c1["dialer"] == {"mode": "adb", "adb_path": "adb", "adb_serial": "S8SERIAL"}
     assert c2["dialer"]["adb_serial"] == "PHONE2" and c2["logs_dir"] == "logs/phone2"
     assert c1["voice"]["mode"] == "clips"  # 다른 mode 설정은 건드리지 않음
+
+
+def test_profile_overrides_and_brief(tmp_path, monkeypatch):
+    import shutil
+    from callagent import config
+    root = tmp_path / "proj"
+    shutil.copytree(Path(__file__).resolve().parent.parent / "profiles" / "_template", root / "profiles" / "곤란한전화")
+    shutil.copy(Path(__file__).resolve().parent.parent / "config.example.yaml", root / "config.example.yaml")
+    monkeypatch.setattr(config, "ROOT", root)
+    monkeypatch.setattr(config, "CONFIG_PATH", root / "config.yaml")
+    cfg = config.load_config(None, "곤란한전화")
+    assert cfg["engine"] == "ai" and cfg["voice"]["mode"] == "mixed"
+    assert cfg["voice"]["clips_dir"].endswith("곤란한전화/clips")
+    assert cfg["logs_dir"].endswith("logs/곤란한전화")
+    assert cfg["audio"]["call_input"] == "CABLE Output"  # 프로필에 없는 설정은 기본값 유지
+    assert "AI 비서" in cfg["agent"]["ai_disclosure"]
+
+
+def test_ai_rules_forbid_identity_and_payment():
+    from callagent.brain import RULES
+    assert "본인 인증" in RULES and "결제" in RULES and "[담당자연결]" in RULES
+    assert "사람이라고 하지 않는다" in RULES
+
+
+def test_coach_mode_suggests_without_speaking(tmp_path, monkeypatch):
+    import shutil
+    shutil.copy(Path(__file__).resolve().parent.parent / "scenarios.example.yaml", tmp_path / "scenarios.yaml")
+    cfg = load_config()
+    cfg["engine"] = "free"
+    cfg["rules"] = {"scenarios": str(tmp_path / "scenarios.yaml")}
+    cfg["voice"]["clips_dir"] = str(tmp_path / "noclips")
+    heard = ["원장님 수술 중이세요"]
+
+    class FakeListener:
+        rate = 16000
+
+        def __init__(self, cfg):
+            self.is_speaking, self.left = threading.Event(), [0]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+        def flush(self):
+            pass
+
+        def next_utterance(self, timeout=None, stop=None):
+            if self.left:
+                return np.full(16000, self.left.pop(0), np.int16)
+            stop.set()  # 다 들었으면 통화 끝
+            return None
+
+    class FakeEars:
+        def __init__(self, cfg):
+            pass
+
+        def transcribe_pcm(self, pcm, rate):
+            return heard[int(pcm[0])]
+
+    monkeypatch.setattr(S, "Listener", FakeListener)
+    monkeypatch.setattr(S, "Mouth", lambda *a: (_ for _ in ()).throw(AssertionError("코치 모드는 말하면 안 됨")))
+    monkeypatch.setattr(S, "make_ears", FakeEars)
+    monkeypatch.setattr(S.Controls, "_loop", lambda self: None)
+    monkeypatch.setattr(S.Console, "_start", classmethod(lambda cls: None))
+    call = S.CallSession(cfg, "", {"_clinic": "집주인"}, coach=True)
+    call.run()
+    assert call.transcript[0] == ("상대", "원장님 수술 중이세요")
+    assert call.transcript[1][0] == "추천"

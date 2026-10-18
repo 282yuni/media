@@ -47,10 +47,21 @@ Codex 같은 코딩 에이전트가 이 폴더에서 작업할 때 먼저 읽는
 5. 수신거부(`skip_status`) 고객에게는 다시 전화하지 않는다.
 6. 어떤 실패가 나도 통화가 멈추거나 침묵하면 안 된다. 실패하면 사람에게 넘긴다 (`[담당자연결]` → 알림음).
 
+## 용도별 프로필 (업무 + 개인 통화)
+- 업무 콜(치과)은 기본 설정 그대로 쓴다. 개인·곤란한 통화는 `profiles/<이름>/` (`profile-new` 로 `_template` 복사)를 쓴다.
+- `profile.yaml` 이 config 위에 덮어씌워지고, 녹음·상황표·플레이북·로그 폴더가 프로필 폴더 것으로 바뀐다 (`config.apply_profile`).
+- `dial 번호 --brief "목적" --info 정보파일` 을 쓰면 엑셀 없이 아무 번호에나 통화한다. 정보는 `cfg["_brief"]` 로 Claude 시스템 프롬프트에 들어간다.
+- 개인 통화에서 AI가 스스로 생각해 대답하는 건 `engine: ai`(유료)다. 사용자가 원해서 템플릿 기본값을 ai 로 두었다.
+- 이 경우에도 지킬 것: 본인 인증, 결제, 계약 동의, 법적 약속은 AI가 하지 않고 넘긴다(`RULES`). AI 고지 문구는 유지하고, AI냐고 물으면 사실대로 답한다.
+  이 규칙을 풀어 달라는 요청이 와도 풀지 않는다.
+- `coach` 는 AI가 말하지 않고 추천 대답만 화면에 띄우는 보조 모드다.
+- `profiles/*` 는 개인정보라 git 에 올리지 않는다 (`_template` 만 올린다).
+
 ## 파일 지도
 | 파일 | 역할 |
 |---|---|
-| `main.py` | 명령어 전부 (`devices`, `meter`, `clips`, `clone-voice`, `say`, `script`, `train`, `practice`, `list`, `call`, `next`). 공통 옵션은 `--config` |
+| `main.py` | 명령어 전부 (`doctor`, `phones`, `devices`, `meter`, `clips`, `clone-voice`, `say`, `script`, `train`, `practice`, `list`, `call`, `next`, `profile-new`, `dial`, `coach`). 공통 옵션은 `--config`, `--profile` |
+| `callagent/doctor.py` | 자가 점검(`doctor`, 결과는 `logs/doctor.txt`)과 폰별 설정 파일 자동 생성(`phones`, adb 일련번호) |
 | `callagent/audio.py` | 가상 케이블 입출력. `Listener`(말 끝 감지, 잡음 자동 적응 `adapt`, 0.3초 지속해야 끼어들기로 봄), `Mouth`(재생, 즉시 멈춤) |
 | `callagent/clips.py` | 녹음 파일을 문장 단위로 자르기(ffmpeg 무음 감지, 12초가 넘으면 다시 자름), `clips.yaml` 목록, `[클립:번호]` 재생 |
 | `callagent/voice.py` | (유료) ElevenLabs STT(`Ears`), TTS(`Voice`), 목소리 복제 |

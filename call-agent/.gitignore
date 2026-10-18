@@ -9,3 +9,5 @@ __pycache__/
 clips/
 config*.yaml
 !config.example.yaml
+profiles/*
+!profiles/_template/

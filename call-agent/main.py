@@ -13,6 +13,10 @@
   python main.py list                 고객 목록 보기
   python main.py call 5               고객 시트 5행에 전화
   python main.py next                 아직 안 한 고객부터 차례대로 계속 전화
+  python main.py profile-new 곤란한전화 용도별 프로필 만들기 (녹음·상황표·말투를 용도별로)
+  python main.py --profile 곤란한전화 dial 01012345678 --brief "해지만 요청" --info 정보.txt
+                                      아무 번호에 AI가 내 정보로 생각해서 내 목소리로 대신 통화
+  python main.py --profile 곤란한전화 coach                                   내가 통화하고 AI는 할 말만 추천
 """
 import argparse
 import sys
@@ -159,6 +163,52 @@ def cmd_phones(cfg, args):
     setup_phones(cfg.get("dialer", {}).get("adb_path", "adb"))
 
 
+def cmd_profile_new(cfg, args):
+    import shutil
+    dst = ROOT / "profiles" / args.name
+    if dst.exists():
+        sys.exit(f"이미 있습니다: {dst}")
+    shutil.copytree(ROOT / "profiles" / "_template", dst)
+    print(f"만들었습니다 → {dst}\n"
+          f"  profile.yaml : 이 용도의 첫인사, free/ai 선택\n"
+          f"  playbook.md  : (ai) 내 말투와 지켜야 할 선\n"
+          f"  scenarios.yaml + clips/ : (free) 녹음 상황표 — python main.py --profile {args.name} clips 녹음.mp3\n"
+          f"사용: python main.py --profile {args.name} dial 01012345678 --brief \"통화 목적\"")
+
+
+def cmd_dial(cfg, args):
+    """고객 엑셀 없이 아무 번호에나: 곤란한 통화, 개인 용무 등. 녹취·요약은 logs/<프로필>/ 에."""
+    from callagent.dialer import Dialer
+    from callagent.session import CallSession, Console
+    brief = args.brief
+    if args.info:
+        from callagent.trainer import read_script
+        brief = (brief + "\n\n[내가 준 정보]\n" if brief else "") + read_script(Path(args.info))
+    if brief:
+        cfg["_brief"] = brief
+        print(f"이번 통화 목적/정보:\n{brief[:500]}")
+    coach = args.cmd == "coach" or args.coach
+    who = {"_clinic": args.label or args.number or "통화", "_name": args.label or "", "_phone": args.number or ""}
+    session = CallSession(cfg, load_playbook(cfg) if not coach or cfg.get("engine") == "ai" else "", who, coach=coach)
+    if not coach:
+        session.prepare()
+    if args.number:
+        Dialer(cfg).dial(args.number)
+    if not coach:
+        Console.ask("상대가 받으면 Enter ▶ ")
+    elif args.number:
+        print("상대가 받으면 직접 통화하세요. 화면에 추천 대답이 나옵니다.")
+    session.run(ready_prompt=False)
+    if args.number and not coach:
+        from callagent.dialer import Dialer as D
+        D(cfg).hang_up()
+    if session.transcript:
+        summary = session.brain.summarize(session.text()) if not coach else None
+        if summary:
+            print(f"\n결과: {summary['status']}\n메모: {summary['memo']}")
+        print(f"녹취 저장: {session.save_log(summary)}")
+
+
 def cmd_list(cfg, args):
     from callagent.customers import CustomerBook
     for c in CustomerBook(cfg).all():
@@ -230,6 +280,7 @@ def cmd_call(cfg, args):
 def main():
     ap = argparse.ArgumentParser(description="치과 1차 콜 AI 대행")
     ap.add_argument("--config", help="설정 파일 (전화기 2대면 두 번째 창에서 --config config2.yaml)")
+    ap.add_argument("--profile", help="용도별 프로필 (profiles/<이름>/). 예: --profile 곤란한전화")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("devices").set_defaults(fn=cmd_devices)
     p = sub.add_parser("meter"); p.add_argument("--seconds", type=float, default=15); p.set_defaults(fn=cmd_meter)
@@ -243,10 +294,19 @@ def main():
     sub.add_parser("list").set_defaults(fn=cmd_list)
     p = sub.add_parser("doctor"); p.add_argument("--dial", default="", help="시험 전화 걸 번호 (내 다른 폰 번호)"); p.set_defaults(fn=cmd_doctor)
     sub.add_parser("phones").set_defaults(fn=cmd_phones)
+    p = sub.add_parser("profile-new"); p.add_argument("name"); p.set_defaults(fn=cmd_profile_new)
+    for name in ("dial", "coach"):
+        p = sub.add_parser(name)
+        p.add_argument("number", nargs="?" if name == "coach" else None, default="", help="걸 번호 (coach 는 생략하면 지금 통화를 듣기만)")
+        p.add_argument("--brief", default="", help="이번 통화 목적과 지켜야 할 선 (예: \"해지만 요청, 다른 상품 거절\")")
+        p.add_argument("--info", default="", help="AI가 참고할 정보 파일 (txt/md/docx): 계약 내용, 원하는 조건, 양보 가능한 선 등")
+        p.add_argument("--label", default="", help="녹취 파일에 붙일 이름 (예: 집주인)")
+        p.add_argument("--coach", action="store_true", help="AI가 말하지 않고 내가 할 말만 화면에 추천")
+        p.set_defaults(fn=cmd_dial)
     p = sub.add_parser("call"); p.add_argument("row", type=int); p.set_defaults(fn=cmd_call)
     p = sub.add_parser("next"); p.add_argument("--start", type=int); p.set_defaults(fn=cmd_call)
     args = ap.parse_args()
-    args.fn(load_config(args.config), args)
+    args.fn(load_config(args.config, args.profile), args)
 
 
 if __name__ == "__main__":
