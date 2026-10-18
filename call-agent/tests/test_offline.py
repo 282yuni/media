@@ -147,14 +147,20 @@ def test_call_loop_with_fakes(monkeypatch):
             yield from _split_sentences(_clean(ans) + " ")[0]
             self.messages.append({"role": "assistant", "content": _clean(ans)})
 
-    for name, fake in [("Listener", FakeListener), ("Ears", FakeEars), ("Mouth", FakeMouth),
-                       ("Voice", FakeVoice), ("Brain", FakeBrain)]:
+    import callagent.voice
+    for name, fake in [("Listener", FakeListener), ("Mouth", FakeMouth)]:
         monkeypatch.setattr(S, name, fake)
+    monkeypatch.setattr(S, "make_ears", FakeEars)
+    monkeypatch.setattr(S, "make_brain", lambda cfg, pb, c, clips: FakeBrain(cfg, pb, c))
+    monkeypatch.setattr(callagent.voice, "Voice", FakeVoice)
     monkeypatch.setattr(S.Controls, "_loop", lambda self: None)  # 키보드 입력 안 받음
     monkeypatch.setattr(S.Console, "_start", classmethod(lambda cls: None))
 
     cfg = load_config()
+    cfg["engine"] = "ai"
     cfg["voice"]["mode"] = "clone"
+    cfg["agent"].update(opening="안녕하세요, {clinic} 맞으시죠?",
+                        ai_disclosure="참고로 이 통화는 AI 음성 비서가 먼저 응대하고 있어요.")
     cfg["agent"]["fillers"] = ["네,"]  # 맞장구 경로도 같이 확인
     call = S.CallSession(cfg, "playbook", {"_clinic": "밝은미소치과", "_name": "김실장"})
     call.run(ready_prompt=False)
@@ -187,3 +193,120 @@ def test_clip_mode_plays_my_recording_unchanged(tmp_path):
     audio, label = call.audio_for("[클립:1]", "")
     assert b"".join(audio) == pcm and label == "네 원장님 안녕하세요"
     assert call.audio_for("녹음에 없는 말", "") == (None, "")  # clips 모드: 합성하지 않음
+
+
+def _rule_brain(tmp_path):
+    import shutil
+    from callagent.rules import RuleBrain
+    shutil.copy(Path(__file__).resolve().parent.parent / "scenarios.example.yaml", tmp_path / "scenarios.yaml")
+    cfg = load_config()
+    cfg["rules"] = {"scenarios": str(tmp_path / "scenarios.yaml"), "min_similarity": 0.6}
+    return RuleBrain(cfg)
+
+
+def test_free_rules_situations(tmp_path):
+    b = _rule_brain(tmp_path)
+    assert list(b.reply("원장님 지금 진료 중이신데요")) == ["[클립:10]"]
+    assert b.status == "재통화"
+    assert list(b.reply("아직 진료 중이세요")) == ["[클립:11]"]  # 같은 상황 두 번째는 다른 녹음
+    # 수신거부가 다른 상황보다 우선, 통화 종료
+    assert list(b.reply("바쁘니까 다시는 전화하지 마세요")) == ["[클립:20]"]
+    assert b.ended and b.status == "수신거부"
+
+
+def test_free_rules_ai_question_is_honest_handoff(tmp_path):
+    b = _rule_brain(tmp_path)
+    assert list(b.reply("이거 혹시 AI예요? 사람이에요?")) == ["[클립:21]"]
+    assert b.handoff
+
+
+def test_free_rules_follow_script_and_summary(tmp_path):
+    b = _rule_brain(tmp_path)
+    assert list(b.reply("네")) == ["[클립:3]", "[클립:4]"]  # 짧은 긍정 → 스크립트 다음 단계
+    assert list(b.reply("네 말씀하세요")) == ["[클립:5]"]
+    assert list(b.reply("아 그래요")) == ["[클립:6]"]
+    assert list(b.reply("우리 강아지가 아파서 걱정이에요 요즘 날씨도 춥고")) == ["[클립:19]"]  # 엉뚱한 말 → 넘김
+    assert b.handoff
+    summary = b.summarize("상대: 네\n상담원(AI): ...\n상대: 우리 강아지가 아파서")
+    assert summary["status"] == "관심" and summary["needs_review"]
+
+
+def test_free_mode_full_call(tmp_path, monkeypatch):
+    """무료 모드 통화 한 건: 상황표 + 내 녹음 재생 + 요약까지 (API 없음)."""
+    import shutil
+    import wave
+    import yaml
+    clips = tmp_path / "clips"
+    clips.mkdir()
+    items = []
+    for i in range(1, 24):
+        with wave.open(str(clips / f"clip_{i:03}.wav"), "wb") as w:
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(24000)
+            w.writeframes(np.full(2400, i, np.int16).tobytes())
+        items.append({"id": i, "file": f"clip_{i:03}.wav", "text": f"녹음{i}", "use": True})
+    (clips / "clips.yaml").write_text(yaml.safe_dump(items, allow_unicode=True), encoding="utf-8")
+    shutil.copy(Path(__file__).resolve().parent.parent / "scenarios.example.yaml", tmp_path / "scenarios.yaml")
+    cfg = load_config(str(Path(__file__).resolve().parent.parent / "config.example.yaml"))
+    cfg["voice"]["clips_dir"] = str(clips)
+    cfg["rules"]["scenarios"] = str(tmp_path / "scenarios.yaml")
+
+    heard = ["여보세요", "네", "원장님 지금 진료 중이세요", "다시는 전화하지 마세요"]
+
+    class FakeListener:
+        rate = 16000
+
+        def __init__(self, cfg):
+            self.is_speaking, self.left = threading.Event(), list(range(len(heard)))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+        def flush(self):
+            pass
+
+        def next_utterance(self, timeout=None, stop=None):
+            return np.full(32000, self.left.pop(0), np.int16) if self.left else None
+
+    played = []
+
+    class FakeMouth:
+        muted = False
+
+        def __init__(self, cfg, rate):
+            pass
+
+        def write(self, pcm):
+            played.append(int(np.frombuffer(pcm, np.int16)[0]))
+
+        def stop(self):
+            pass
+
+        def wait_done(self, interrupt=None):
+            return True
+
+        def close(self):
+            pass
+
+    class FakeEars:
+        def __init__(self, cfg):
+            pass
+
+        def transcribe_pcm(self, pcm, rate):
+            return heard[int(pcm[0])]
+
+    monkeypatch.setattr(S, "Listener", FakeListener)
+    monkeypatch.setattr(S, "Mouth", FakeMouth)
+    monkeypatch.setattr(S, "make_ears", FakeEars)
+    monkeypatch.setattr(S.Controls, "_loop", lambda self: None)
+    monkeypatch.setattr(S.Console, "_start", classmethod(lambda cls: None))
+
+    call = S.CallSession(cfg, "", {"_clinic": "밝은미소치과"})
+    call.run(ready_prompt=False)
+    # 첫인사(1,2)+AI고지(8) → 맞장구(9)+스크립트(3,4) → 맞장구+원장부재(10) → 맞장구+수신거부(20)
+    assert played == [1, 2, 8, 9, 3, 4, 9, 10, 9, 20]
+    assert call.brain.ended
+    s = call.brain.summarize(call.text())
+    assert s["status"] == "수신거부"

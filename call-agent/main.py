@@ -20,6 +20,9 @@ from callagent.config import ROOT, load_config, resolve, save_voice_id
 
 
 def load_playbook(cfg: dict) -> str:
+    from callagent.engine import is_free
+    if is_free(cfg):
+        return ""  # 무료 모드는 scenarios.yaml 을 씀
     p = resolve(cfg["brain"].get("playbook", "playbook.md"))
     if not p.exists():
         sys.exit(f"{p.name} 이 없습니다. 먼저 `python main.py train` 으로 만들어 주세요.")
@@ -70,10 +73,15 @@ def cmd_say(cfg, args):
 
 
 def cmd_train(cfg, args):
+    from callagent.engine import is_free
     from callagent.trainer import build_playbook, transcribe_folder
     folder = ROOT / args.folder
     print(f"{folder} 의 통화 녹음을 받아 적습니다.")
     transcripts = transcribe_folder(cfg, folder)
+    if is_free(cfg):
+        print(f"\n대본 {len(transcripts)}개 → {folder / 'transcripts'}\n"
+              "Codex 에게 \"recordings/transcripts 대본을 보고 scenarios.yaml 을 보강해줘\" 라고 요청하세요.")
+        return
     build_playbook(cfg, transcripts, resolve(cfg["brain"].get("playbook", "playbook.md")))
 
 
@@ -85,16 +93,16 @@ def cmd_script(cfg, args):
 
 def cmd_practice(cfg, args):
     """전화 없이 플레이북 테스트. 내가 상대(치과) 역할로 타이핑하면 AI가 대답."""
-    from callagent.brain import Brain
+    from callagent.engine import make_brain, voice_mode
     from callagent.session import fill
     customer = None
     if args.row:
         from callagent.customers import CustomerBook
         customer = CustomerBook(cfg).get(args.row)
     from callagent.clips import TOKEN, ClipBank
-    mode = cfg["voice"].get("mode", "clone")
+    mode = voice_mode(cfg)
     clips = ClipBank(cfg) if mode in ("clips", "mixed") else None
-    brain = Brain(cfg, load_playbook(cfg), customer, clips=clips)
+    brain = make_brain(cfg, load_playbook(cfg), customer, clips)
     voice = speaker = None
     if args.voice:
         from callagent.audio import Speaker

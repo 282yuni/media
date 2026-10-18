@@ -1,10 +1,9 @@
 """내 통화 녹음 → 대본 → 상황별 응대 플레이북(playbook.md)."""
 from pathlib import Path
 
-import anthropic
+from .voice import audio_files
 
-from .brain import FALLBACK_BETA
-from .voice import Ears, audio_files
+FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 PROMPT = """\
 아래는 한 텔레마케터(상담원)가 치과에 실제로 건 영업 전화(1차 콜) 녹음을 받아 적은 대본들이다.
@@ -33,7 +32,8 @@ PROMPT = """\
 
 
 def transcribe_folder(cfg: dict, folder: Path) -> list[Path]:
-    ears = Ears(cfg)
+    from .engine import make_ears
+    ears = make_ears(cfg)
     out_dir = folder / "transcripts"
     out_dir.mkdir(exist_ok=True)
     done = []
@@ -59,6 +59,7 @@ def build_playbook(cfg: dict, transcripts: list[Path], out: Path) -> None:
     if out.exists():
         existing = ("\n\n아래는 상담원이 이미 고쳐 둔 기존 플레이북이다. 직접 고친 내용(특히 6번에 채운 정보)은 "
                     "그대로 유지하고, 새 대본에서 나온 것만 보강해라.\n\n" + out.read_text(encoding="utf-8"))
+    import anthropic
     client = anthropic.Anthropic()
     print(f"대본 {len(transcripts)}개로 플레이북을 만드는 중... (1~3분)")
     with client.beta.messages.stream(
@@ -101,6 +102,7 @@ def read_script(path: Path) -> str:
 
 def build_playbook_from_script(cfg: dict, script: Path, out: Path) -> None:
     text = read_script(script)
+    import anthropic
     client = anthropic.Anthropic()
     print(f"{script.name} 로 플레이북을 만드는 중... (1~2분)")
     with client.beta.messages.stream(

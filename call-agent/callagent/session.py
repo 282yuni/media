@@ -8,10 +8,10 @@ from datetime import datetime
 from pathlib import Path
 
 from .audio import Listener, Mouth
-from .brain import Brain
+from .engine import make_brain, make_ears, voice_mode
 from .clips import TOKEN, ClipBank, split_tokens
 from .config import resolve
-from .voice import TTS_RATE, Ears, Voice
+from .voice import TTS_RATE
 
 NOISE_TEXT = re.compile(r"[\s\W음어으흠아]*")
 HELP = "  [Enter]만 누르면 아무 일 없음 | t + Enter: 내가 직접 받기(AI 멈춤) | e + Enter: 통화 종료"
@@ -80,13 +80,17 @@ class CallSession:
     def __init__(self, cfg: dict, playbook: str, customer: dict | None):
         self.cfg = cfg
         self.customer = customer
-        self.mode = cfg["voice"].get("mode", "clone")
+        self.mode = voice_mode(cfg)
         self.clips = ClipBank(cfg) if self.mode in ("clips", "mixed") else None
         if self.mode == "clips" and not self.clips:
             raise RuntimeError("녹음 문장이 없습니다. 먼저 `python main.py clips 내녹음.mp3` 를 실행하세요.")
-        self.voice = Voice(cfg) if self.mode != "clips" else None
-        self.brain = Brain(cfg, playbook, customer, clips=self.clips)
-        self.ears = Ears(cfg)
+        if self.mode != "clips":
+            from .voice import Voice
+            self.voice = Voice(cfg)
+        else:
+            self.voice = None
+        self.brain = make_brain(cfg, playbook, customer, self.clips)
+        self.ears = make_ears(cfg)
         self.transcript: list[tuple[str, str]] = []
         self.barge_in = cfg["audio"].get("barge_in", True)
         self.no_answer = cfg["audio"].get("no_answer_timeout_sec", 12)
@@ -196,6 +200,8 @@ class CallSession:
                 opening = fill(a["opening"], self.cfg, self.customer)
                 self._ready.wait(timeout=10)
                 intro = self._intro or split_tokens(opening) + split_tokens((a.get("ai_disclosure") or "").strip())
+                if not intro:
+                    print("⚠ 첫인사로 재생할 녹음이 없습니다! config.yaml 의 agent.opening 녹음 번호를 확인하세요.")
                 said = self.say(intro, listener, mouth, ctl)
                 self.brain.messages += [{"role": "user", "content": hello},
                                         {"role": "assistant", "content": said or opening}]

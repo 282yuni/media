@@ -6,13 +6,13 @@ from pathlib import Path
 from typing import Iterator
 
 import numpy as np
-from elevenlabs.client import ElevenLabs
 
 TTS_RATE = 24000
 AUDIO_EXT = {".mp3", ".m4a", ".wav", ".aac", ".ogg", ".flac", ".amr", ".3gp", ".webm", ".mp4"}
 
 
-def client() -> ElevenLabs:
+def client():
+    from elevenlabs.client import ElevenLabs  # 유료(ai) 모드에서만 필요
     key = os.environ.get("ELEVENLABS_API_KEY")
     if not key:
         raise RuntimeError(".env 에 ELEVENLABS_API_KEY 를 넣어주세요.")

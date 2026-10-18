@@ -67,8 +67,8 @@ def cut(cfg: dict, src: Path, noise_db: int = -35, min_silence: float = 0.6) -> 
     segs = find_segments(src, noise_db, min_silence)
     print(f"{src.name}: 문장 덩어리 {len(segs)}개를 찾았습니다.")
     try:
-        from .voice import Ears
-        ears = Ears(cfg)
+        from .engine import make_ears
+        ears = make_ears(cfg)
     except Exception as e:
         ears = None
         print(f"  (음성 인식 없이 자르기만 합니다: {e}) → clips.yaml 의 text 를 직접 채워주세요.")

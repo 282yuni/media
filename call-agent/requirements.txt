@@ -1,9 +1,10 @@
-anthropic>=1.14
-elevenlabs>=2.0
+# 기본 (무료 모드)
 sounddevice>=0.4.6
 numpy>=1.26
 pyyaml>=6.0
 python-dotenv>=1.0
 openpyxl>=3.1
-# 구글 시트를 쓸 때만 필요
+faster-whisper>=1.0
+# 구글 시트를 쓸 때만
 gspread>=6.0
+# 유료(ai) 모드를 쓸 때만:  pip install anthropic elevenlabs
