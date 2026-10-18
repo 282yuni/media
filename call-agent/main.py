@@ -209,6 +209,11 @@ def cmd_dial(cfg, args):
         print(f"녹취 저장: {session.save_log(summary)}")
 
 
+def cmd_desktop(cfg, args):
+    from callagent.desktop import make_shortcut
+    make_shortcut()
+
+
 def cmd_list(cfg, args):
     from callagent.customers import CustomerBook
     for c in CustomerBook(cfg).all():
@@ -294,6 +299,7 @@ def main():
     sub.add_parser("list").set_defaults(fn=cmd_list)
     p = sub.add_parser("doctor"); p.add_argument("--dial", default="", help="시험 전화 걸 번호 (내 다른 폰 번호)"); p.set_defaults(fn=cmd_doctor)
     sub.add_parser("phones").set_defaults(fn=cmd_phones)
+    sub.add_parser("desktop").set_defaults(fn=cmd_desktop)
     p = sub.add_parser("profile-new"); p.add_argument("name"); p.set_defaults(fn=cmd_profile_new)
     for name in ("dial", "coach"):
         p = sub.add_parser(name)

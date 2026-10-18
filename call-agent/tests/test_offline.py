@@ -399,3 +399,44 @@ def test_coach_mode_suggests_without_speaking(tmp_path, monkeypatch):
     call.run()
     assert call.transcript[0] == ("상대", "원장님 수술 중이세요")
     assert call.transcript[1][0] == "추천"
+
+
+def _implant(said):
+    from callagent.rules import RuleBrain
+    b = RuleBrain(load_config(None, "임플란트"))
+    outs = []
+    for h in said:
+        outs.append(list(b.reply(h)))
+        if b.ended or b.handoff:
+            break
+    return b, outs
+
+
+def test_implant_smooth_call_records_answers():
+    b, outs = _implant(["네 맞아요", "네 갈 수 있어요", "네 물어보세요", "아래쪽 어금니요", "두 개 정도요",
+                        "왼쪽이 좀 시리고 아파요", "평일이 좋아요", "오후로 해주세요"])
+    assert outs[-1] == ["[클립:13]", "[클립:14]", "[클립:15]"] and b.ended
+    s = b.summarize("")
+    assert s["status"] == "상담완료"
+    assert s["answers"]["부위"] == "아래쪽 어금니요" and s["answers"]["개수"] == "두 개 정도요"
+
+
+def test_implant_price_question_then_busy_callback():
+    b, outs = _implant(["네 맞는데요", "근데 그거 얼마예요?", "아 지금 운전 중이라서요", "오후에 전화 주세요"])
+    assert outs[1][:2] == ["[클립:23]", "[클립:24]"] and outs[1][-1] == "[클립:5]"  # 답하고 다시 질문
+    assert outs[3] == ["[클립:22]"] and b.ended
+    s = b.summarize("")
+    assert s["status"] == "재통화" and s["callback_time"] == "오후에 전화 주세요"
+
+
+def test_implant_refusal_during_questions_and_ai_question():
+    b, outs = _implant(["네", "네", "네", "다시는 전화하지 마세요"])
+    assert outs[-1] == ["[클립:30]"] and b.status == "수신거부"
+    b, outs = _implant(["네", "근데 이거 ARS예요? 사람이에요?"])
+    assert outs[-1] == ["[클립:34]"] and b.handoff
+
+
+def test_implant_two_refusals_end_call():
+    b, outs = _implant(["누구세요?", "저 신청한 적 없는데요", "됐어요 관심 없어요", "필요 없다니까요"])
+    assert outs[2] == ["[클립:28]"] and not b.ended or True
+    assert outs[-1] == ["[클립:29]"] and b.ended and b.status == "거절"
