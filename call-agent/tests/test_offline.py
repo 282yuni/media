@@ -656,3 +656,22 @@ def test_menu_offers_new_zip_on_start(tmp_path, monkeypatch):
     (clips / "clips.yaml").write_text("[]")  # 이미 넣은 뒤(더 새것)면 다시 묻지 않음
     menu.offer_new_zip(["에셜론"])
     assert not calls
+
+
+def test_echelon_auto_picks_script_by_business_type():
+    from callagent.config import script_for
+    from callagent.rules import RuleBrain
+    cfg = load_config(None, "에셜론_자동")
+    assert cfg["agent"]["opening"] == "[클립:39]"  # 점검·연습은 기본(스크립트1)
+    pick = lambda c: script_for(cfg, c).get("_script")
+    assert pick({"업종": "한식당"}) == "에셜론2_업종별"
+    assert pick({"업종": "헤어살롱"}) == "에셜론2_업종별"
+    assert pick({"업종": "네일샵"}) == "에셜론2_업종별"
+    assert pick({"업종": "피부관리실"}) == "에셜론2_업종별"
+    assert pick({"업종": "학원"}) == "에셜론1_정리본"
+    assert pick({"업종": ""}) == "에셜론1_정리본"
+    assert pick({"업종": "한식당", "스크립트": 1.0}) == "에셜론1_정리본"  # 엑셀 '스크립트' 칸이 우선
+    # 미용 계열은 '네이버 지도 보고 연락드렸습니다' 로 시작, 음식점은 공통 첫인사
+    sub = script_for(cfg, {"업종": "헤어살롱"})
+    assert RuleBrain(sub, "", {"업종": "헤어살롱"}).opening == "[클립:2]"
+    assert RuleBrain(sub, "", {"업종": "한식당"}).opening is None and sub["agent"]["opening"] == "[클립:1]"

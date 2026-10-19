@@ -19,15 +19,39 @@ def apply_profile(cfg: dict, name: str) -> dict:
     pdir = ROOT / "profiles" / name
     if not pdir.exists():
         raise SystemExit(f"프로필이 없습니다: {pdir}  (python main.py profile-new {name} 으로 만드세요)")
-    cfg.setdefault("voice", {})["clips_dir"] = str(pdir / "clips")
-    cfg.setdefault("rules", {})["scenarios"] = str(pdir / "scenarios.yaml")
-    cfg.setdefault("brain", {})["playbook"] = str(pdir / "playbook.md")
-    cfg["logs_dir"] = str(Path(cfg.get("logs_dir", "logs")) / name)
     extra = pdir / "profile.yaml"
-    if extra.exists():
-        _merge(cfg, yaml.safe_load(extra.read_text(encoding="utf-8")) or {})
+    extra = (yaml.safe_load(extra.read_text(encoding="utf-8")) or {}) if extra.exists() else {}
+    if extra.get("auto_script"):
+        # 자동 프로필: 손님마다 script_for() 로 스크립트를 고름. 점검·연습 등은 기본 스크립트로
+        cfg = apply_profile(cfg, extra["auto_script"]["default"])
+    else:
+        cfg.setdefault("voice", {})["clips_dir"] = str(pdir / "clips")
+        cfg.setdefault("rules", {})["scenarios"] = str(pdir / "scenarios.yaml")
+        cfg.setdefault("brain", {})["playbook"] = str(pdir / "playbook.md")
+        cfg["logs_dir"] = str(Path(cfg.get("logs_dir", "logs")) / name)
+    _merge(cfg, extra)
     cfg["_profile"] = name
     return cfg
+
+
+def script_for(cfg: dict, customer: dict | None) -> dict:
+    """자동 프로필이면 이 손님에게 쓸 스크립트(프로필) 설정을 돌려준다.
+    엑셀 '스크립트' 칸(1/2)이 있으면 그것, 없으면 '업종' 칸 낱말로, 둘 다 아니면 기본 스크립트."""
+    a = cfg.get("auto_script")
+    if not a or not customer:
+        return cfg
+    pick = str(customer.get(a.get("pick_column", "스크립트")) or "").strip().removesuffix(".0")
+    name = (a.get("numbers") or {}).get(pick)
+    if not name:
+        kind = str(customer.get(a.get("column", "업종")) or "")
+        name = next((r["profile"] for r in a.get("rules", []) if any(k in kind for k in r.get("match", []))),
+                    a["default"])
+    sub = load_config(None, name)
+    room = (cfg.get("notify") or {}).get("kakao_room")
+    if room:  # 카톡 대화방은 자동 프로필에 정한 것 하나로
+        sub.setdefault("notify", {})["kakao_room"] = room
+    sub["_script"] = name
+    return sub
 
 
 def load_config(path: str | None = None, profile: str | None = None) -> dict:

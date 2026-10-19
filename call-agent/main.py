@@ -229,6 +229,10 @@ def cmd_practice(cfg, args):
         customer = CustomerBook(cfg).get(args.row)
     elif getattr(args, "kind", ""):
         customer = {"업종": args.kind, "_clinic": args.kind}
+    from callagent.config import script_for
+    cfg = script_for(cfg, customer)  # 자동 프로필이면 업종에 맞는 스크립트로
+    if cfg.get("_script"):
+        print(f"→ 스크립트: {cfg['_script']}")
     from callagent.clips import TOKEN, ClipBank
     mode = voice_mode(cfg)
     clips = ClipBank(cfg) if mode in ("clips", "mixed") else None
@@ -408,6 +412,10 @@ def run_call(cfg, book, customer, playbook, dialer) -> bool:
         return False
     if ans == "s":
         return True
+    from callagent.config import script_for
+    cfg = script_for(cfg, customer)  # 자동 프로필이면 업종에 맞는 스크립트로
+    if cfg.get("_script"):
+        print(f"→ 스크립트: {cfg['_script']}")
     session = CallSession(cfg, playbook, customer)
     session.prepare()  # 신호음 울리는 동안 첫인사 소리·AI 캐시를 미리 준비 → 받자마자 바로 인사
     dialer.dial(customer["_phone"])
