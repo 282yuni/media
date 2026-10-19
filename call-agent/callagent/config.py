@@ -30,8 +30,37 @@ def apply_profile(cfg: dict, name: str) -> dict:
         cfg.setdefault("brain", {})["playbook"] = str(pdir / "playbook.md")
         cfg["logs_dir"] = str(Path(cfg.get("logs_dir", "logs")) / name)
     _merge(cfg, extra)
+    local = local_settings()  # 내 PC 설정이 맨 마지막 (업데이트해도 유지): 모든 프로필 공통 → 이 프로필
+    _merge(cfg, local.get("all") or {})
+    _merge(cfg, (local.get("profiles") or {}).get(name) or {})
     cfg["_profile"] = name
     return cfg
+
+
+def local_path() -> Path:
+    """내 PC 에만 있는 설정 (카톡 대화방 등). data 폴더라 업데이트해도 지워지지 않는다."""
+    return ROOT / "data" / "내설정.yaml"
+
+
+def local_settings() -> dict:
+    p = local_path()
+    try:
+        return (yaml.safe_load(p.read_text(encoding="utf-8")) or {}) if p.exists() else {}
+    except Exception:
+        return {}
+
+
+def save_local(profile: str | None, values: dict) -> Path:
+    """내 설정 저장. profile=None 이면 모든 프로필 공통.
+    예: save_local("에셜론_자동", {"notify": {"kakao_room": "김팀장"}})"""
+    data = local_settings()
+    prof = data.setdefault("all", {}) if profile is None else data.setdefault("profiles", {}).setdefault(profile, {})
+    _merge(prof, values)
+    p = local_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("# 내 PC 설정 (프로그램 업데이트해도 그대로 유지)\n"
+                 + yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    return p
 
 
 def script_for(cfg: dict, customer: dict | None) -> dict:

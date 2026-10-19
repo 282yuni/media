@@ -42,7 +42,33 @@ class Dialer:
         target = ["-s", self.serial] if self.serial else []
         subprocess.run([self.adb, *target, "shell", *args], check=True, capture_output=True, timeout=10)
 
+    def call_state(self) -> str | None:
+        """폰의 통화 상태: 'idle'(통화 없음) / 'offhook'(거는 중·통화 중) / None(알 수 없음, adb 아님)."""
+        if self.mode != "adb":
+            return None
+        target = ["-s", self.serial] if self.serial else []
+        try:
+            out = subprocess.run([self.adb, *target, "shell", "dumpsys", "telephony.registry"],
+                                 capture_output=True, timeout=5, text=True, encoding="utf-8", errors="ignore").stdout
+        except Exception:
+            return None
+        states = re.findall(r"mCallState=(\d)", out)  # 유심 2개 폰은 여러 줄
+        if not states:
+            return None
+        if all(x == "0" for x in states):
+            return "idle"
+        self._seen_offhook = True
+        return "offhook"
+
+    def is_idle(self) -> bool:
+        """상대가 끊었는지. 이번 통화에서 '통화 중'을 한 번이라도 봤을 때만 믿는다
+        (상태를 잘못 알려 주는 폰에서 멀쩡한 통화를 끊지 않게)."""
+        return self.call_state() == "idle" and self._seen_offhook
+
+    _seen_offhook = False
+
     def dial(self, phone: str) -> None:
+        self._seen_offhook = False
         number = normalize(phone)
         if self.mode == "adb":
             self._adb("am", "start", "-a", "android.intent.action.CALL", "-d", f"tel:{number}")

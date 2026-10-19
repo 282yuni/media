@@ -380,9 +380,15 @@ def cmd_kakao_test(cfg, args):
     if not room:
         return
     ok = send_kakao(room, "[전화상담] 카톡 보내기 시험입니다. 이 메시지가 보이면 성공!")
-    if ok and room != (cfg.get("notify") or {}).get("kakao_room"):
+    if ok and room != (cfg.get("notify") or {}).get("kakao_room") and cfg.get("_profile"):
+        from callagent.config import local_settings, save_local
+        target = save_local(cfg["_profile"], {"notify": {"kakao_room": room}})  # data 폴더: 업데이트해도 유지
+        if not ((local_settings().get("all") or {}).get("notify") or {}).get("kakao_room"):
+            save_local(None, {"notify": {"kakao_room": room}})  # 다른 프로필도 처음엔 같은 대화방으로
+        print(f"대화방 이름을 내 설정에 저장했습니다 → {target.name}")
+    elif ok and room != (cfg.get("notify") or {}).get("kakao_room"):
         import re
-        target = ROOT / "profiles" / cfg["_profile"] / "profile.yaml" if cfg.get("_profile") else ROOT / "config.yaml"
+        target = ROOT / "config.yaml"
         t = target.read_text(encoding="utf-8") if target.exists() else ""
         if re.search(r'(?m)^\s*kakao_room:', t):
             t = re.sub(r'(?m)^(\s*kakao_room:\s*)"[^"]*"', rf'\1"{room}"', t)
@@ -400,13 +406,21 @@ def cmd_list(cfg, args):
         print(f"{c['_row']:>4}행  {c['_clinic']:<14} {c['_name']:<6} {c['_phone']:<14} {c['_status']}")
 
 
-def run_call(cfg, book, customer, playbook, dialer) -> bool:
-    """한 건 통화. 계속 다음 고객으로 넘어갈지 여부를 돌려준다."""
+def run_call(cfg, book, customer, playbook, dialer, away: bool = False) -> bool:
+    """한 건 통화. 계속 다음 고객으로 넘어갈지 여부를 돌려준다.
+    away=True: 자리 비움 자동 모드 (묻지 않고 걸기 → 받으면 첫인사 → 끝나면 바로 기록)"""
     from callagent.session import CallSession, Console
     print("\n" + "─" * 50)
     print(f"{customer['_row']}행 | {customer['_clinic']} | {customer['_name']} | {customer['_phone']}")
     if customer["_memo"]:
         print(f"이전 메모: {customer['_memo'][:200]}")
+    if away:
+        from callagent.away import settings
+        gap = settings(cfg)["gap_sec"]
+        print(f"🤖 자리 비움 자동 모드 — {gap:g}초 뒤 자동으로 겁니다. (멈추려면 q + Enter)")
+        if (Console.poll(gap) or "").strip().lower() == "q":
+            return False
+        return run_call_away(cfg, book, customer, playbook, dialer)
     ans = Console.ask("전화할까요? (Enter: 걸기 / s: 건너뛰기 / q: 그만) ").strip().lower()
     if ans == "q":
         return False
@@ -450,12 +464,57 @@ def run_call(cfg, book, customer, playbook, dialer) -> bool:
     return True
 
 
+def run_call_away(cfg, book, customer, playbook, dialer) -> bool:
+    """자리 비움 자동 모드 한 건: 걸기 → 상대 목소리로 받았는지 확인 → 통화 → 엑셀에 바로 기록."""
+    from callagent.away import handoff_alert, settings, wait_for_answer
+    from callagent.config import script_for
+    from callagent.session import CallSession
+    cfg = script_for(cfg, customer)
+    if cfg.get("_script"):
+        print(f"→ 스크립트: {cfg['_script']}")
+    a = settings(cfg)
+    session = CallSession(cfg, playbook, customer)
+    session.prepare()
+    dialer.dial(customer["_phone"])
+    try:
+        print(f"   상대가 받기를 기다립니다… (최대 {a['answer_timeout_sec']:g}초)")
+        result, hello = wait_for_answer(cfg, session.ears, dialer, a["answer_timeout_sec"])
+        if result != "answered":
+            memo = {"no_answer": f"{a['answer_timeout_sec']:g}초 동안 응답 없음",
+                    "carrier": f"안내 음성: {hello[:40]}", "ended": "받지 않고 끊김"}[result]
+            book.record_result(customer["_row"], "부재", memo)
+            print(f"→ '부재'로 기록 ({memo})")
+            return True
+        session.run(ready_prompt=False, hello=hello, hung_up=dialer.is_idle,
+                    away={**a, "alert": handoff_alert(cfg, customer)})
+    finally:
+        dialer.hang_up()  # 오류가 나도 전화는 꼭 끊기
+    summary = session.brain.summarize(session.text())
+    if session.handoff_closed:
+        summary.update(status="재통화", next_action="직접 다시 연락 (넘겨받기 못 함)", needs_review=True,
+                       memo="[담당자 확인 필요] " + summary["memo"])
+    log = session.save_log(summary)
+    from callagent.notify import notify_success
+    notify_success(cfg, customer, summary, session.text())
+    memo = summary["memo"]
+    if summary.get("next_action"):
+        memo += f" / 다음: {summary['next_action']} {summary.get('callback_time', '')}".rstrip()
+    book.record_result(customer["_row"], summary["status"], memo)
+    print(f"  결과: {summary['status']}\n  메모: {memo}\n  녹취 저장: {log}\n→ 엑셀에 기록 완료")
+    return True
+
+
 def cmd_call(cfg, args):
     from callagent.customers import CustomerBook
     from callagent.dialer import Dialer
     book, playbook, dialer = CustomerBook(cfg), load_playbook(cfg), Dialer(cfg)
+    away = getattr(args, "away", False)
+    if away and dialer.mode != "adb":
+        sys.exit("자리 비움 자동 모드는 폰이 USB 로 연결돼 있어야 합니다 (메뉴 2. 폰 연결 설정). 지금은 수동 모드로 쓰세요.")
+    if away:
+        print("🤖 자리 비움 자동 모드로 시작합니다. 멈추려면 고객 사이에 q + Enter (통화 중에는 e + Enter).")
     if args.cmd == "call":
-        run_call(cfg, book, book.get(args.row), playbook, dialer)
+        run_call(cfg, book, book.get(args.row), playbook, dialer, away)
         return
     after = (args.start or 2) - 1
     while True:
@@ -464,7 +523,7 @@ def cmd_call(cfg, args):
             print("더 걸 고객이 없습니다.")
             return
         after = customer["_row"]
-        if not run_call(cfg, book, customer, playbook, dialer):
+        if not run_call(cfg, book, customer, playbook, dialer, away):
             return
 
 
@@ -501,8 +560,11 @@ def main():
         p.add_argument("--label", default="", help="녹취 파일에 붙일 이름 (예: 집주인)")
         p.add_argument("--coach", action="store_true", help="AI가 말하지 않고 내가 할 말만 화면에 추천")
         p.set_defaults(fn=cmd_dial)
-    p = sub.add_parser("call"); p.add_argument("row", type=int); p.set_defaults(fn=cmd_call)
-    p = sub.add_parser("next"); p.add_argument("--start", type=int); p.set_defaults(fn=cmd_call)
+    p = sub.add_parser("call"); p.add_argument("row", type=int); p.add_argument("--away", action="store_true")
+    p.set_defaults(fn=cmd_call)
+    p = sub.add_parser("next"); p.add_argument("--start", type=int)
+    p.add_argument("--away", action="store_true", help="자리 비움 자동 모드 (묻지 않고 걸고, 끝나면 바로 기록)")
+    p.set_defaults(fn=cmd_call)
     args = ap.parse_args()
     args.fn(load_config(args.config, args.profile), args)
 

@@ -39,6 +39,15 @@ class Console:
         return cls.lines.get()
 
     @classmethod
+    def poll(cls, timeout: float) -> str | None:
+        """timeout 초 동안 입력을 기다린다. 아무것도 안 치면 None (자동 모드에서 멈춤 키 받기용)."""
+        cls._start()
+        try:
+            return cls.lines.get(timeout=timeout)
+        except queue.Empty:
+            return None
+
+    @classmethod
     def _start(cls):
         if not cls._started:
             cls._started = True
@@ -96,6 +105,8 @@ class CallSession:
         self.barge_in = cfg["audio"].get("barge_in", True)
         self.no_answer = cfg["audio"].get("no_answer_timeout_sec", 12)
         self.filler_min = cfg["audio"].get("filler_after_sec", 1.2)
+        self.handoff_closed = False  # 자리 비움 모드: 넘겨받을 사람이 없어 '확인 후 연락'으로 마무리함
+        self.took_over = False
         self._intro: list | None = None
         self._fillers: list = []
         self._ready = threading.Event()
@@ -205,7 +216,51 @@ class CallSession:
                     print("   ⚠ 이 부분은 직접 판단하세요 (인증·결제·약속 등)")
             ctl.end.set()
 
-    def run(self, ready_prompt: bool = True) -> None:
+    def _first_available(self, items: list[str]) -> list[str]:
+        """['[클립:41]', '[클립:28]'] 중 녹음이 있는 첫 번째 것."""
+        for item in items:
+            toks = split_tokens(item)
+            if toks and all(not TOKEN.fullmatch(t) or (self.clips and int(TOKEN.fullmatch(t).group(1)) in self.clips.items)
+                            for t in toks):
+                return toks
+        return []
+
+    def _away_handoff(self, heard: str, listener: Listener, mouth: Mouth, ctl: Controls, away: dict) -> None:
+        """자리 비움 모드에서 넘겨받을 상황: 알림음 + 카톡 → 정해진 시간 안에 t 를 누르면 직접 받기,
+        아무도 안 받으면 정중히 '확인 후 다시 연락드리겠습니다' 로 마무리."""
+        mouth.wait_done()
+        wait = away.get("takeover_wait_sec", 10)
+        print(f"\a\n🔔🔔 넘겨받을 상황입니다 ('{heard}') — {wait}초 안에 t + Enter 로 직접 받으세요 🔔🔔")
+        alert = away.get("alert")
+        if alert:
+            try:
+                alert(heard)
+            except Exception as e:
+                print(f"   (알림 보내기 실패: {e})")
+        t_end = time.time() + wait
+        while time.time() < t_end and not (ctl.takeover.is_set() or ctl.end.is_set()):
+            time.sleep(0.2)
+        if ctl.end.is_set() and not ctl.takeover.is_set():  # 기다리는 동안 상대가 끊음
+            self.handoff_closed = True
+            return
+        if ctl.takeover.is_set():
+            self.took_over = True
+            mouth.muted = True
+            mouth.stop()
+            ctl.end.wait()
+            return
+        print("   아무도 받지 않아 '확인 후 다시 연락드리겠습니다' 로 마무리합니다.")
+        close = self._first_available(away.get("handoff_close") or ["[클립:41]", "[클립:28]"])
+        if close:
+            listener.flush()
+            self.say(close, listener, mouth, ctl)
+            mouth.wait_done()
+        self.handoff_closed = True
+
+    def run(self, ready_prompt: bool = True, hello: str | None = None, away: dict | None = None,
+            hung_up=None) -> None:
+        """hello: 자리 비움 모드에서 이미 들은 상대 첫마디 / away: 자리 비움 모드 설정 (None 이면 지금처럼 수동)
+        hung_up: 상대가 끊었는지 확인하는 함수 (폰 상태로 판단, 2초마다)"""
         if self.coach:
             return self.run_coach()
         a = self.cfg["agent"]
@@ -220,13 +275,27 @@ class CallSession:
                 listener.flush()
                 ctl = Controls()
                 print(HELP)
+                if hung_up:
+                    def watch():
+                        while not ctl.end.wait(2.0):
+                            try:
+                                if hung_up():
+                                    print("📴 상대가 전화를 끊었습니다.")
+                                    ctl.end.set()
+                            except Exception:
+                                pass
+                    threading.Thread(target=watch, daemon=True).start()
 
-                # 상대가 먼저 "여보세요" 할 시간을 잠깐 준다
-                first = listener.next_utterance(timeout=2.5, stop=ctl.end)
-                hello = "(전화가 연결됨)"
-                if first is not None:
-                    hello = self.ears.transcribe_pcm(first, listener.rate) or "여보세요"
-                    self.log("상대", hello)
+                if hello is not None:  # 자리 비움 모드: 받았는지 확인하면서 이미 들은 첫마디
+                    if hello != "(전화가 연결됨)":
+                        self.log("상대", hello)
+                else:
+                    # 상대가 먼저 "여보세요" 할 시간을 잠깐 준다
+                    first = listener.next_utterance(timeout=2.5, stop=ctl.end)
+                    hello = "(전화가 연결됨)"
+                    if first is not None:
+                        hello = self.ears.transcribe_pcm(first, listener.rate) or "여보세요"
+                        self.log("상대", hello)
                 opening = fill(getattr(self.brain, "opening", None) or a["opening"], self.cfg, self.customer)
                 self._ready.wait(timeout=10)
                 intro = self._intro or split_tokens(opening) + split_tokens((a.get("ai_disclosure") or "").strip())
@@ -268,6 +337,9 @@ class CallSession:
                     if self.brain.messages[-1]["role"] == "user":  # 말하다 끊긴 경우 기록 맞추기
                         self.brain.messages.append({"role": "assistant", "content": said or "(침묵)"})
                     print(f"   (응답 지연 {time.time() - t0:.1f}초)")
+                    if self.brain.handoff and away is not None:
+                        self._away_handoff(heard, listener, mouth, ctl, away)
+                        break
                     if self.brain.handoff:
                         mouth.muted = True
                         ctl.takeover.set()

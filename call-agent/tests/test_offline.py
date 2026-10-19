@@ -675,3 +675,206 @@ def test_echelon_auto_picks_script_by_business_type():
     sub = script_for(cfg, {"업종": "헤어살롱"})
     assert RuleBrain(sub, "", {"업종": "헤어살롱"}).opening == "[클립:2]"
     assert RuleBrain(sub, "", {"업종": "한식당"}).opening is None and sub["agent"]["opening"] == "[클립:1]"
+
+
+# ── 자리 비움 자동 모드 ─────────────────────────────────────────
+
+def _fake_clips(tmp_path, n=39):
+    import wave
+    clips = tmp_path / "clips"
+    clips.mkdir()
+    items = []
+    for i in range(1, n + 1):
+        with wave.open(str(clips / f"clip_{i:03}.wav"), "wb") as w:
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(24000)
+            w.writeframes(np.full(2400, i, np.int16).tobytes())
+        items.append({"id": i, "file": f"clip_{i:03}.wav", "text": f"녹음{i}", "use": True})
+    (clips / "clips.yaml").write_text(yaml.safe_dump(items, allow_unicode=True), encoding="utf-8")
+    return clips
+
+
+class _ScriptedListener:
+    """미리 정한 말(초 길이, 글)을 차례로 들려주는 가짜 귀."""
+    rate = 16000
+    script: list = []
+
+    def __init__(self, cfg):
+        self.is_speaking = threading.Event()
+        self.left = list(type(self).script)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        pass
+
+    def flush(self):
+        pass
+
+    def next_utterance(self, timeout=None, stop=None):
+        if not self.left:
+            return None
+        sec, idx = self.left.pop(0)
+        return np.full(int(16000 * sec), idx, np.int16)
+
+
+def test_away_answer_detection_ignores_ringback_and_carrier(monkeypatch):
+    from callagent import away
+    words = ["", "여보세요", "지금 거신 전화는 전원이 꺼져 있어 음성사서함으로 연결됩니다", "라라라 음악"]
+
+    class Ears:
+        def transcribe_pcm(self, pcm, rate):
+            return words[int(pcm[0])]
+
+    class Dialer:
+        state = "offhook"
+
+        def call_state(self):
+            return self.state
+
+        def is_idle(self):
+            return self.state == "idle"
+
+    monkeypatch.setattr(away, "Listener", _ScriptedListener)
+    cfg = load_config(None, "에셜론")
+    _ScriptedListener.script = [(12, 3), (2, 0), (1.2, 1)]  # 컬러링(12초) → 잡음 → "여보세요"
+    assert away.wait_for_answer(cfg, Ears(), Dialer(), 5) == ("answered", "여보세요")
+    _ScriptedListener.script = [(6, 2)]
+    assert away.wait_for_answer(cfg, Ears(), Dialer(), 5)[0] == "carrier"
+    _ScriptedListener.script = []
+    assert away.wait_for_answer(cfg, Ears(), Dialer(), 0.5) == ("no_answer", "")
+    _ScriptedListener.script = [(1.5, 1), (8, 3)]  # 짧은 말 뒤에 바로 음악이 이어짐 = 매장 컬러링 → 받은 게 아님
+    assert away.wait_for_answer(cfg, Ears(), Dialer(), 1.0) == ("no_answer", "")
+    Dialer.state = "idle"  # 상대가 거절·끊음
+    monkeypatch.setattr(away.time, "time", iter(range(0, 1000, 4)).__next__)
+    _ScriptedListener.script = [(12, 3)] * 5
+    assert away.wait_for_answer(cfg, Ears(), Dialer(), 30) == ("ended", "")
+
+
+def test_away_handoff_alerts_then_closes_politely(tmp_path, monkeypatch):
+    cfg = load_config(None, "에셜론")
+    cfg["voice"]["clips_dir"] = str(_fake_clips(tmp_path))  # 41번 녹음은 아직 없음 → 28번으로 마무리
+    words = ["네", "이거 혹시 자동응답이에요?"]
+    played, alerts = [], []
+
+    class Ears:
+        def __init__(self, cfg=None):
+            pass
+
+        def transcribe_pcm(self, pcm, rate):
+            return words[int(pcm[0])]
+
+    class FakeMouth:
+        muted = False
+
+        def __init__(self, cfg, rate):
+            pass
+
+        def write(self, pcm):
+            played.append(int(np.frombuffer(pcm, np.int16)[0]))
+
+        def stop(self):
+            pass
+
+        def wait_done(self, interrupt=None):
+            return True
+
+        def close(self):
+            pass
+
+    _ScriptedListener.script = [(1, 0), (1, 1)]  # 짧게 (맞장구 없이)
+    monkeypatch.setattr(S, "Listener", _ScriptedListener)
+    monkeypatch.setattr(S, "Mouth", FakeMouth)
+    monkeypatch.setattr(S, "make_ears", Ears)
+    monkeypatch.setattr(S.Controls, "_loop", lambda self: None)
+    monkeypatch.setattr(S.Console, "_start", classmethod(lambda cls: None))
+    call = S.CallSession(cfg, "", {"업종": "한식당", "_clinic": "테스트식당"})
+    call.run(ready_prompt=False, hello="여보세요",
+             away={"takeover_wait_sec": 0.3, "handoff_close": ["[클립:41]", "[클립:28]"], "alert": alerts.append})
+    assert played == [1, 3, 4, 5, 6, 31, 28]  # 첫인사 → 소개 → '확인해서 안내' → 아무도 안 받음 → 마무리
+    assert alerts == ["이거 혹시 자동응답이에요?"] and call.handoff_closed and not call.took_over
+    assert call.transcript[0] == ("상대", "여보세요")
+
+
+def test_away_call_records_without_asking(monkeypatch):
+    import main
+    from callagent import away
+    from callagent import session as sess
+
+    class Book:
+        rows = []
+
+        def record_result(self, row, status, memo):
+            self.rows.append((row, status, memo))
+
+    class Dialer:
+        mode = "adb"
+        dialed = []
+
+        def dial(self, phone):
+            self.dialed.append(phone)
+
+        def hang_up(self):
+            pass
+
+        def is_idle(self):
+            return False
+
+    class FakeSession:
+        def __init__(self, cfg, playbook, customer):
+            from callagent.rules import RuleBrain
+            self.brain = RuleBrain(cfg, "", customer)
+            self.ears, self.handoff_closed, self.transcript = None, False, []
+
+        def prepare(self):
+            pass
+
+        def run(self, **kw):
+            assert kw["hello"] == "여보세요" and kw["away"]["alert"]
+            self.transcript = [("AI", "녹음"), ("상대", "네")]
+
+        def text(self):
+            return "상대: 네"
+
+        def save_log(self, summary):
+            return "log.txt"
+
+    monkeypatch.setattr(sess, "CallSession", FakeSession)
+    monkeypatch.setattr(sess.Console, "poll", classmethod(lambda cls, t: None))  # 아무도 안 누름
+    monkeypatch.setattr(sess.Console, "ask", classmethod(lambda cls, p="": pytest_fail()))
+    cfg = load_config(None, "에셜론")
+    cust = {"_row": 5, "_clinic": "가게", "_name": "", "_phone": "01011112222", "_memo": "", "업종": "한식당"}
+    book, dialer = Book(), Dialer()
+    monkeypatch.setattr(away, "wait_for_answer", lambda *a: ("no_answer", ""))
+    assert main.run_call(cfg, book, cust, "", dialer, away=True)
+    assert book.rows[-1][:2] == (5, "부재") and dialer.dialed == ["01011112222"]
+    monkeypatch.setattr(away, "wait_for_answer", lambda *a: ("answered", "여보세요"))
+    assert main.run_call(cfg, book, cust, "", dialer, away=True)
+    assert book.rows[-1][0] == 5 and book.rows[-1][1] != "부재"  # 묻지 않고 바로 기록
+
+
+def pytest_fail():
+    raise AssertionError("자동 모드에서 사람에게 물어보면 안 됨")
+
+
+def test_kakao_room_survives_update(tmp_path, monkeypatch):
+    from callagent import config, updater
+    monkeypatch.setattr(config, "local_path", lambda: tmp_path / "내설정.yaml")
+    old = 'notify:\n  kakao_room: "김팀장"\n'.encode("utf-8")
+    updater.keep_kakao_room("에셜론_자동", old)  # 업데이트가 profile.yaml 을 새것(빈 이름)으로 덮어쓰기 전에 옮겨 둠
+    assert load_config(None, "에셜론_자동")["notify"]["kakao_room"] == "김팀장"
+    from callagent.config import script_for
+    assert script_for(load_config(None, "에셜론_자동"), {"업종": "미용실"})["notify"]["kakao_room"] == "김팀장"
+
+
+def test_dialer_trusts_hangup_only_after_call_seen(monkeypatch):
+    from callagent import dialer as D
+    out = {"v": "mCallState=0\n  mCallState=0\n"}
+    monkeypatch.setattr(D.subprocess, "run", lambda *a, **k: types.SimpleNamespace(stdout=out["v"]))
+    d = D.Dialer({"dialer": {"mode": "adb", "adb_path": "adb"}})
+    d.dial("01012345678")
+    assert d.call_state() == "idle" and not d.is_idle()  # 통화 중을 본 적 없으면 '끊김'으로 안 침
+    out["v"] = "mCallState=2\n  mCallState=0\n"
+    assert d.call_state() == "offhook"
+    out["v"] = "mCallState=0\n"
+    assert d.is_idle()

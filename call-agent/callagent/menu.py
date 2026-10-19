@@ -80,9 +80,11 @@ def main(profile: str = "") -> None:
         recorded = [n for n in names if (ROOT / "profiles" / n / "clips" / "clips.yaml").exists()]
         auto = [n for n in names if n.endswith("_자동")]  # 업종 보고 스크립트를 고르는 프로필이 있으면 그것
         profile = auto[0] if auto else recorded[0] if recorded else ("임플란트" if "임플란트" in names else names[0])
+    away = False  # 자리 비움 자동 모드: 켤 때마다 꺼진 상태로 시작 (기본은 수동)
     while True:
         p = ["--profile", profile] if profile else []
-        print("\n" + "=" * 46 + f"\n  전화상담   (프로필: {profile or '기본'})\n" + "=" * 46)
+        mode = "🟢 자리 비움 자동 모드 켜짐" if away else "수동 모드"
+        print("\n" + "=" * 46 + f"\n  전화상담   (프로필: {profile or '기본'})\n  {mode}\n" + "=" * 46)
         print("  1. 점검하기           (준비됐는지 확인)\n"
               "  2. 폰 연결 설정       (USB 로 꽂은 폰 찾기)\n"
               "  3. 내 녹음 넣기       (녹음 파일을 문장별로 자르기)\n"
@@ -92,6 +94,7 @@ def main(profile: str = "") -> None:
               "  7. 아무 번호로 걸기\n"
               "  8. 녹음 대본 보기\n"
               "  9. 프로필 바꾸기\n"
+              f"  a. 자리 비움 자동 모드 {'끄기' if away else '켜기'} (5·6번을 묻지 않고 자동으로)\n"
               "  c. 내 목소리로 대본 만들기 (녹음 대신 복제 목소리로 한 번에)\n"
               "  k. 카톡 보내기 테스트  (성사 녹취록 받을 담당자 대화방)\n"
               "  s. 소리 테스트        (스피커에서 소리가 나는지)\n"
@@ -110,9 +113,9 @@ def main(profile: str = "") -> None:
             k = input("연습할 업종 (예: 미용실, 네일샵, 한식당 / 그냥 Enter = 기본): ").strip()
             run(*p, "practice", "--voice", *(["--kind", k] if k else []))
         elif c == "5":
-            run(*p, "next")
+            run(*p, "next", *(["--away"] if away else []))
         elif c == "6":
-            run("--config", "config2.yaml", *p, "next")
+            run("--config", "config2.yaml", *p, "next", *(["--away"] if away else []))
         elif c == "7":
             n = input("걸 번호: ").strip()
             b = input("통화 목적 (없으면 Enter): ").strip()
@@ -129,6 +132,17 @@ def main(profile: str = "") -> None:
                 print(f"  {i}. {n}")
             k = input("번호 (기본 설정은 0): ").strip()
             profile = names[int(k) - 1] if k.isdigit() and 0 < int(k) <= len(names) else ""
+        elif c.lower() == "a":
+            away = not away
+            if away:
+                print("\n🟢 자리 비움 자동 모드를 켰습니다. 5·6번을 누르면:\n"
+                      "   · 다음 고객을 묻지 않고 자동으로 겁니다 (고객 사이 q + Enter 로 멈춤)\n"
+                      "   · 상대 목소리가 들리면 첫인사 시작, 30초 동안 안 받으면 '부재' 기록 후 다음\n"
+                      "   · 통화가 끝나면 묻지 않고 엑셀에 바로 기록\n"
+                      "   · 넘겨받을 상황이면 알림음 + 카톡 → 10초 안에 t + Enter 로 직접 받기,\n"
+                      "     안 받으면 '확인 후 다시 연락드리겠습니다' 로 마무리")
+            else:
+                print("\n수동 모드로 돌아왔습니다. (전화 걸 때마다 묻고, 기록도 확인 후 저장)")
         elif c.lower() == "c":
             run(*p, "voice-setup")
         elif c.lower() == "k":
