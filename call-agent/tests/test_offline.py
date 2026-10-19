@@ -502,8 +502,8 @@ def test_echelon_objections():
     assert outs[-1] == ["[클립:16]"] and b.ended and b.status == "거절"
 
 
-def test_echelon_unknown_question_hands_off_without_claiming_human():
-    b, outs = _echelon("한식당", ["네", "이거 혹시 자동응답이에요?"])
+def test_echelon_unknown_question_hands_off():
+    b, outs = _echelon("한식당", ["네", "그거 하면 리뷰가 몇 개 올라가요?"])
     assert outs[-1] == ["[클립:31]"] and b.handoff  # "확인해서 다시 연락드릴게요" + 나에게 넘김
 
 
@@ -754,7 +754,7 @@ def test_away_answer_detection_ignores_ringback_and_carrier(monkeypatch):
 def test_away_handoff_alerts_then_closes_politely(tmp_path, monkeypatch):
     cfg = load_config(None, "에셜론")
     cfg["voice"]["clips_dir"] = str(_fake_clips(tmp_path))  # 41번 녹음은 아직 없음 → 28번으로 마무리
-    words = ["네", "이거 혹시 자동응답이에요?"]
+    words = ["네", "그거 하면 리뷰가 몇 개 올라가요?"]
     played, alerts = [], []
 
     class Ears:
@@ -792,7 +792,7 @@ def test_away_handoff_alerts_then_closes_politely(tmp_path, monkeypatch):
     call.run(ready_prompt=False, hello="여보세요",
              away={"takeover_wait_sec": 0.3, "handoff_close": ["[클립:41]", "[클립:28]"], "alert": alerts.append})
     assert played == [1, 3, 4, 5, 6, 31, 28]  # 첫인사 → 소개 → '확인해서 안내' → 아무도 안 받음 → 마무리
-    assert alerts == ["이거 혹시 자동응답이에요?"] and call.handoff_closed and not call.took_over
+    assert alerts == ["그거 하면 리뷰가 몇 개 올라가요?"] and call.handoff_closed and not call.took_over
     assert call.transcript[0] == ("상대", "여보세요")
 
 
