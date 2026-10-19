@@ -507,6 +507,40 @@ def test_echelon_unknown_question_hands_off_without_claiming_human():
     assert outs[-1] == ["[클립:31]"] and b.handoff  # "확인해서 다시 연락드릴게요" + 나에게 넘김
 
 
+def _run(profile, kind, said):
+    from callagent.rules import RuleBrain
+    cfg = load_config(None, profile)
+    b = RuleBrain(cfg, "", {"업종": kind})
+    outs = []
+    for h in said:
+        outs.append(list(b.reply(h)))
+        if b.ended or b.handoff:
+            break
+    return cfg, b, outs
+
+
+def test_echelon_script1_cleaned_version():
+    cfg, b, outs = _run("에셜론1_정리본", "한식당", ["네", "네 좋아요", "010 1234 5678"])
+    assert cfg["agent"]["opening"] == "[클립:39]" and cfg["voice"]["clips_dir"].endswith("에셜론/clips")
+    assert outs == [["[클립:3]"], ["[클립:13]"], ["[클립:15]"]] and b.ended
+    assert b.summarize("")["answers"]["연락처"] == "010 1234 5678"
+    _, b, outs = _run("에셜론1_정리본", "헤어살롱", ["네", "광고하고 있어요", "네 보내주세요"])
+    assert b.opening == "[클립:2]" and outs[1] == ["[클립:18]", "[클립:19]"] and outs[2] == ["[클립:13]"]
+    _, b, outs = _run("에셜론1_정리본", "카페", ["네", "관심 없어요", "필요 없다니까요"])
+    assert outs[-1] == ["[클립:16]"] and b.ended and b.status == "거절"
+
+
+def test_echelon_script2_by_business_type():
+    cfg, b, outs = _run("에셜론2_업종별", "헤어살롱", ["네", "사진 몇 장 있어요", "네 보내주세요", "010 1234 5678"])
+    assert cfg["agent"]["opening"] == "[클립:1]"
+    assert outs == [["[클립:7]", "[클립:8]"], ["[클립:12]"], ["[클립:40]"], ["[클립:14]", "[클립:15]"]] and b.ended
+    assert b.summarize("")["status"] == "제안서발송"
+    _, b, outs = _run("에셜론2_업종별", "한식당", ["네"])
+    assert outs[0] == ["[클립:4]", "[클립:5]", "[클립:6]"]
+    _, b, outs = _run("에셜론2_업종별", "네일샵", ["네", "광고하고 있어요", "네 보내주세요"])
+    assert outs[1] == ["[클립:17]", "[클립:36]", "[클립:37]", "[클립:21]"] and outs[2] == ["[클립:40]"]
+
+
 def test_silent_customer_hello_twice_then_hang_up(tmp_path, monkeypatch):
     import wave
     import yaml

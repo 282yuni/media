@@ -1,0 +1,22 @@
+# 에셜론 스크립트2 (업종별): 첫인사 → 업종별 안내 → 제안서 → 유선번호 → 마무리
+engine: "free"
+agent:
+  my_name: ""
+  company: "에셜론"
+  product: "네이버 플레이스 상위노출 업종별 안내 (음식점·미용실·네일·피부)"
+  opening: "[클립:1]"
+  ai_disclosure: ""
+  fillers: ["[클립:25]", "[클립:26]"]
+  hello_again: ["[클립:32]", "[클립:38]"]
+  hello_again_times: 2
+voice:
+  clips_dir: "profiles/에셜론/clips"    # 녹음은 '에셜론' 프로필 것을 같이 씀 (한 번만 넣으면 됨)
+  keyterms: ["네이버 플레이스", "상위노출", "블로그", "인스타그램", "제안서", "에셜론"]
+rules:
+  branch_column: "업종"
+customers:
+  path: "data/에셜론_고객.xlsx"
+  columns: {name: "상호명", clinic: "상호명", phone: "전화번호", status: "상태", memo: "메모", last_call: "통화일시"}
+notify:
+  kakao_room: ""
+  on_status: ["제안서발송"]

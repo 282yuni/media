@@ -1,0 +1,84 @@
+# 에셜론 스크립트1 (금일 정리본). 번호 = profiles/에셜론/녹음대본.txt (+39: 첫도단 정리본 멘트)
+flows:
+  - name: 미용 계열 (네이버 지도 멘트)
+    match: ["미용", "헤어", "살롱", "바버", "네일", "피부", "에스테틱", "왁싱", "속눈썹", "뷰티"]
+    opening: "[클립:2]"
+    steps:
+      - {say: "[클립:3]", ask: "관심"}
+      - {say: "[클립:13]", ask: "연락처", status: "관심"}
+      - {say: "[클립:15]", status: "제안서발송", end: true}
+  - name: 기본
+    match: []
+    opening: "[클립:39]"
+    steps:
+      - {say: "[클립:3]", ask: "관심"}
+      - {say: "[클립:13]", ask: "연락처", status: "관심"}
+      - {say: "[클립:15]", status: "제안서발송", end: true}
+
+scenarios:
+  - name: 수신거부
+    always: true
+    keywords: ["연락하지 마", "전화하지 마", "번호 지워", "그만 전화", "다시는", "귀찮게", "신고"]
+    reply: ["[클립:30]"]
+    status: "수신거부"
+    end: true
+  - name: 담당자 요청
+    always: true
+    keywords: ["담당자", "바꿔", "직접 통화", "책임자", "팀장"]
+    reply: ["[클립:33]"]
+    handoff: true
+  - name: 바쁨
+    always: true
+    keywords: ["바빠", "바쁘", "나중에", "운전 중", "운전중", "영업 중", "손님", "장사 중", "시간 없"]
+    reply: ["[클립:27]"]
+    status: "재통화"
+    ask: "재통화 시간"
+    after_answer: {say: "[클립:28]", status: "재통화", end: true}
+  - name: 대표 아님
+    interrupt: true
+    keywords: ["대표님 안 계", "사장님 안 계", "대표 아니", "사장 아니", "직원인데", "알바", "자리에 없", "지금 없", "안 계세요"]
+    reply: ["[클립:29]"]
+    status: "재통화"
+    ask: "대표님 통화 가능 시간"
+    after_answer: {say: "[클립:28]", status: "재통화", end: true}
+  - name: 광고하고 있어요
+    interrupt: true
+    keywords: ["하는 데 있", "업체 있", "광고하고 있", "광고 하고", "광고 중", "이미 하고", "쓰고 있", "맡기고 있", "대행사", "하고 있어요"]
+    reply: ["[클립:18] [클립:19]", "[클립:20]"]
+    status: "관심"
+    ask: "수락"
+    goto: 1
+  - name: 생각해볼게
+    interrupt: true
+    keywords: ["생각해 볼", "생각해볼", "고민", "나중에 볼", "검토해 볼", "알아보고"]
+    reply: ["[클립:20]"]
+    status: "관심"
+    ask: "수락"
+    goto: 1
+  - name: 관심 없음
+    interrupt: true
+    keywords: ["관심 없", "필요 없", "안 해요", "됐어요", "생각 없", "안 할", "필요 없어"]
+    reply: ["[클립:20]", "[클립:16]"]
+    status: "거절"
+    ask: "수락"
+    goto: 1
+    end_on_repeat: true
+  - name: 왜 무료
+    keywords: ["왜 무료", "무료로 왜", "왜 공짜", "공짜로", "왜 해줘", "왜 해 줘", "무슨 이득"]
+    reply: ["[클립:22]"]
+  - name: 돈 드는지
+    keywords: ["돈 드", "돈 나가", "비용", "유료", "결제", "얼마", "공짜 맞", "진짜 무료", "나중에 돈"]
+    reply: ["[클립:23]"]
+  - name: 어디세요
+    keywords: ["누구세요", "어디세요", "어디서", "회사", "업체 이름", "어디 업체"]
+    reply: ["[클립:24]"]
+  - name: 사진 보내는 법
+    keywords: ["어떻게 보내", "어디로 보내", "사진은 어디", "카톡으로", "문자로 보내"]
+    reply: ["[클립:35]"]
+  - name: 잘 안 들림
+    keywords: ["안 들려", "뭐라고요", "다시 말씀", "잘 안 들"]
+    reply: ["[클립:38]"]
+
+default:
+  reply: ["[클립:31]"]
+  handoff: true
