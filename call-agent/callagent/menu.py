@@ -1,6 +1,7 @@
 """전화상담.bat 이 여는 번호 메뉴."""
 import subprocess
 import sys
+from pathlib import Path
 
 from .config import ROOT
 
@@ -8,6 +9,41 @@ from .config import ROOT
 def profiles() -> list[str]:
     d = ROOT / "profiles"
     return sorted(p.name for p in d.iterdir() if p.is_dir() and not p.name.startswith("_")) if d.exists() else []
+
+
+def find_clip_zips() -> list[Path]:
+    """다운로드·바탕화면에서 다듬어 받은 녹음 ZIP(clips.yaml 이 든 것) 찾기. 최신 것부터."""
+    import zipfile
+    home = Path.home()
+    dirs = [home / "Downloads", home / "다운로드", home / "Desktop", home / "바탕 화면",
+            *home.glob("OneDrive*/Desktop"), *home.glob("OneDrive*/바탕 화면")]
+    found = []
+    for d in dirs:
+        if not d.is_dir():
+            continue
+        for f in d.glob("*.zip"):
+            try:
+                with zipfile.ZipFile(f) as z:
+                    if any(Path(n).name == "clips.yaml" for n in z.namelist()):
+                        found.append(f)
+            except (zipfile.BadZipFile, OSError):
+                pass
+    return sorted(set(found), key=lambda f: f.stat().st_mtime, reverse=True)
+
+
+def ask_clip_file() -> str:
+    f = input("녹음 파일(또는 다듬어 받은 ZIP)을 이 창으로 끌어다 놓고 Enter\n"
+              "  (끌어다 놓기가 안 되면 그냥 Enter → 다운로드 폴더에서 찾아요): ").strip().strip('"')
+    if f:
+        return f
+    zips = find_clip_zips()
+    if not zips:
+        print("다운로드 폴더·바탕화면에 녹음 ZIP 이 없습니다. 카톡/채팅에서 ZIP 을 먼저 '다운로드' 해 주세요.")
+        return ""
+    for i, z in enumerate(zips[:5], 1):
+        print(f"  {i}. {z.name}   ({z.parent})")
+    k = input("넣을 번호 (그냥 Enter = 1번, 가장 최근 것): ").strip() or "1"
+    return str(zips[int(k) - 1]) if k.isdigit() and 0 < int(k) <= min(5, len(zips)) else ""
 
 
 def run(*args: str) -> None:
@@ -44,7 +80,7 @@ def main(profile: str = "") -> None:
         elif c == "2":
             run("phones")
         elif c == "3":
-            f = input("녹음 파일(또는 다듬어 받은 ZIP)을 이 창으로 끌어다 놓고 Enter: ").strip().strip('"')
+            f = ask_clip_file()
             if f:
                 run(*p, "clips", f)
         elif c == "4":

@@ -618,3 +618,19 @@ def test_success_call_sends_transcript_to_kakao(monkeypatch):
     sent.clear()
     notify.notify_success(cfg, customer, {"status": "거절"}, "상대: 됐어요")  # 성사가 아니면 안 보냄
     assert sent == []
+
+
+def test_menu_finds_clip_zip_in_downloads(tmp_path, monkeypatch):
+    import zipfile
+    from callagent import menu
+    d = tmp_path / "Downloads"
+    d.mkdir()
+    with zipfile.ZipFile(d / "에셜론_완성녹음.zip", "w") as z:
+        z.writestr("clips.yaml", "[]")
+    with zipfile.ZipFile(d / "다른거.zip", "w") as z:
+        z.writestr("a.txt", "x")
+    monkeypatch.setattr(menu.Path, "home", classmethod(lambda cls: tmp_path))
+    assert [f.name for f in menu.find_clip_zips()] == ["에셜론_완성녹음.zip"]
+    answers = iter(["", ""])
+    monkeypatch.setattr("builtins.input", lambda *_: next(answers))
+    assert menu.ask_clip_file().endswith("에셜론_완성녹음.zip")
