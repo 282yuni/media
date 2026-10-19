@@ -505,3 +505,66 @@ def test_echelon_objections():
 def test_echelon_unknown_question_hands_off_without_claiming_human():
     b, outs = _echelon("한식당", ["네", "이거 혹시 자동응답이에요?"])
     assert outs[-1] == ["[클립:31]"] and b.handoff  # "확인해서 다시 연락드릴게요" + 나에게 넘김
+
+
+def test_silent_customer_hello_twice_then_hang_up(tmp_path, monkeypatch):
+    import wave
+    import yaml
+    clips = tmp_path / "clips"
+    clips.mkdir()
+    items = []
+    for i in range(1, 40):
+        with wave.open(str(clips / f"clip_{i:03}.wav"), "wb") as w:
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(24000)
+            w.writeframes(np.full(2400, i, np.int16).tobytes())
+        items.append({"id": i, "file": f"clip_{i:03}.wav", "text": f"녹음{i}", "use": True})
+    (clips / "clips.yaml").write_text(yaml.safe_dump(items, allow_unicode=True), encoding="utf-8")
+    cfg = load_config(None, "에셜론")
+    cfg["voice"]["clips_dir"] = str(clips)
+
+    class SilentListener:
+        rate = 16000
+
+        def __init__(self, cfg):
+            self.is_speaking = threading.Event()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+        def flush(self):
+            pass
+
+        def next_utterance(self, timeout=None, stop=None):
+            return None  # 상대가 아무 말도 안 함
+
+    played = []
+
+    class FakeMouth:
+        muted = False
+
+        def __init__(self, cfg, rate):
+            pass
+
+        def write(self, pcm):
+            played.append(int(np.frombuffer(pcm, np.int16)[0]))
+
+        def stop(self):
+            pass
+
+        def wait_done(self, interrupt=None):
+            return True
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(S, "Listener", SilentListener)
+    monkeypatch.setattr(S, "Mouth", FakeMouth)
+    monkeypatch.setattr(S, "make_ears", lambda cfg: None)
+    monkeypatch.setattr(S.Controls, "_loop", lambda self: None)
+    monkeypatch.setattr(S.Console, "_start", classmethod(lambda cls: None))
+    call = S.CallSession(cfg, "", {"업종": "한식당", "_clinic": "테스트식당"})
+    call.run(ready_prompt=False)
+    assert played == [1, 32, 32]  # 첫인사 → 여보세요? → 여보세요? → 끊기

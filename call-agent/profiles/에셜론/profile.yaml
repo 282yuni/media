@@ -7,7 +7,8 @@ agent:
   opening: "[클립:1]"          # 업종별 첫인사는 scenarios.yaml 의 flows 가 우선
   ai_disclosure: ""
   fillers: ["[클립:25]", "[클립:26]"]
-  hello_again: "[클립:32]"
+  hello_again: "[클립:32]"       # "여보세요?"
+  hello_again_times: 2           # 대답 없으면 여보세요? → 또 없으면 여보세요? → 그래도 없으면 끊기
 voice:
   keyterms: ["네이버 플레이스", "상위노출", "블로그", "인스타그램", "제안서", "에셜론"]
 rules:

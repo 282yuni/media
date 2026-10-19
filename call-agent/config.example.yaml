@@ -33,6 +33,7 @@ agent:
   fillers: ["[클립:9]"]
   # 상대가 아무 말 없을 때 ("여보세요? 제 말 잘 들리세요?" 녹음 번호)
   hello_again: "[클립:23]"
+  hello_again_times: 2            # 대답이 없으면 hello_again 을 몇 번까지 말할지 (그 뒤엔 끊기)
 
 # ── 오디오 장치 (python main.py devices 로 이름 확인) ──────────
 audio:

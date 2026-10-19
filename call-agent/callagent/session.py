@@ -243,7 +243,8 @@ class CallSession:
                         break
                     if utt is None:
                         silent_rounds += 1
-                        if silent_rounds >= 2:
+                        # 대답이 없으면 "여보세요?" 를 hello_again_times 번(기본 2번)까지 → 그래도 없으면 끊기
+                        if silent_rounds > a.get("hello_again_times", 2):
                             print("상대가 응답이 없어 통화를 마칩니다.")
                             break
                         self.say(split_tokens(a.get("hello_again", "여보세요? 제 말 잘 들리세요?")), listener, mouth, ctl)
