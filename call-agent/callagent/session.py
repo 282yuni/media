@@ -115,7 +115,7 @@ class CallSession:
         def work():
             try:
                 a = self.cfg["agent"]
-                intro = split_tokens(fill(a["opening"], self.cfg, self.customer))
+                intro = split_tokens(fill(getattr(self.brain, "opening", None) or a["opening"], self.cfg, self.customer))
                 intro += split_tokens((a.get("ai_disclosure") or "").strip())
                 self._intro = self._render(intro)
                 self._fillers = [r for f in a.get("fillers", []) for r in self._render(split_tokens(f))]
@@ -227,7 +227,7 @@ class CallSession:
                 if first is not None:
                     hello = self.ears.transcribe_pcm(first, listener.rate) or "여보세요"
                     self.log("상대", hello)
-                opening = fill(a["opening"], self.cfg, self.customer)
+                opening = fill(getattr(self.brain, "opening", None) or a["opening"], self.cfg, self.customer)
                 self._ready.wait(timeout=10)
                 intro = self._intro or split_tokens(opening) + split_tokens((a.get("ai_disclosure") or "").strip())
                 if not intro:

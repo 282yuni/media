@@ -1,0 +1,17 @@
+# 에셜론 — 네이버 플레이스 상위노출 마케팅 1차 콜 (무료 모드: 내 녹음 그대로)
+engine: "free"
+agent:
+  my_name: ""
+  company: "에셜론"
+  product: "네이버 플레이스 상위노출 마케팅 제안서 안내"
+  opening: "[클립:1]"          # 업종별 첫인사는 scenarios.yaml 의 flows 가 우선
+  ai_disclosure: ""
+  fillers: ["[클립:25]", "[클립:26]"]
+  hello_again: "[클립:32]"
+voice:
+  keyterms: ["네이버 플레이스", "상위노출", "블로그", "인스타그램", "제안서", "에셜론"]
+rules:
+  branch_column: "업종"
+customers:
+  path: "data/에셜론_고객.xlsx"
+  columns: {name: "상호명", clinic: "상호명", phone: "전화번호", status: "상태", memo: "메모", last_call: "통화일시"}

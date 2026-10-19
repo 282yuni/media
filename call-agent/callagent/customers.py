@@ -22,6 +22,17 @@ class CustomerBook:
         elif self.source == "excel":
             import openpyxl
             self.path = resolve(c["path"])
+            if not self.path.exists():  # 처음이면 열 이름만 있는 견본을 만들어 둔다
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                cols = c["columns"]
+                head = list(dict.fromkeys([cols["name"], cols["clinic"], cols["phone"]]))
+                branch = cfg.get("rules", {}).get("branch_column")
+                if branch:
+                    head.append(branch)
+                wb = openpyxl.Workbook()
+                wb.active.append(head + [cols["status"], cols["memo"], cols["last_call"]])
+                wb.save(self.path)
+                print(f"   고객 엑셀 견본을 만들었습니다: {self.path}  (열: {', '.join(head)})")
             self.wb = openpyxl.load_workbook(self.path)
             self.ws = self.wb[c["sheet"]] if c.get("sheet") else self.wb.worksheets[0]
             values = [["" if v is None else str(v) for v in row] for row in self.ws.iter_rows(values_only=True)]

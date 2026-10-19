@@ -28,6 +28,16 @@ class RuleBrain:
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         self.scenarios = data.get("scenarios") or []
         self.flow = data.get("flow") or []
+        self.opening = None   # 업종별 첫인사 (flows 에 opening 이 있으면 config 의 opening 대신)
+        self.branch = ""
+        # 업종별 스크립트: 고객 시트의 '업종' 칸을 보고 flows 중 맞는 걸 고름 (없으면 match 가 빈 것 = 기본)
+        flows = data.get("flows") or []
+        if flows:
+            col = cfg.get("rules", {}).get("branch_column", "업종")
+            kind = _norm(str((customer or {}).get(col, "")))
+            pick = next((f for f in flows if any(_norm(k) in kind for k in f.get("match", []) if _norm(k)) and kind), None)
+            pick = pick or next((f for f in flows if not f.get("match")), flows[0])
+            self.flow, self.opening, self.branch = pick.get("steps", []), pick.get("opening"), pick.get("name", "")
         self.default = data.get("default") or {"reply": [], "handoff": True}
         self.min_similarity = cfg.get("rules", {}).get("min_similarity", 0.6)
         self.clips = clips

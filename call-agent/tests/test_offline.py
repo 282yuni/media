@@ -465,3 +465,38 @@ def test_practice_profile_objections_mid_question():
 def test_practice_profile_two_refusals_mid_question_end():
     b, outs = _practice(["네", "관심 없어요", "필요 없다니까요"])
     assert outs[-1] == ["[클립:58]"] and b.ended and b.status == "거절"
+
+
+def _echelon(kind, said):
+    from callagent.rules import RuleBrain
+    b = RuleBrain(load_config(None, "에셜론"), "", {"업종": kind})
+    outs = []
+    for h in said:
+        outs.append(list(b.reply(h)))
+        if b.ended or b.handoff:
+            break
+    return b, outs
+
+
+def test_echelon_branch_by_business_type():
+    assert _echelon("한식당", [])[0].opening == "[클립:1]"
+    b, _ = _echelon("헤어살롱", [])
+    assert b.opening == "[클립:2]" and b.branch == "미용실"
+    assert _echelon("네일샵", [])[0].branch == "네일숍"
+
+
+def test_echelon_restaurant_full_call_records_phone():
+    b, outs = _echelon("한식당", ["네 괜찮아요", "메뉴 사진 몇 장 있어요", "네 보내주세요", "010 1234 5678"])
+    assert outs[0] == ["[클립:3]", "[클립:4]", "[클립:5]", "[클립:6]"]
+    assert outs[-1] == ["[클립:14]", "[클립:15]"] and b.ended
+    s = b.summarize("")
+    assert s["status"] == "제안서발송" and s["answers"]["연락처"] == "010 1234 5678"
+
+
+def test_echelon_objections():
+    b, outs = _echelon("헤어살롱", ["네", "광고하고 있어요", "네 그럼 보내주세요"])
+    assert outs[1] == ["[클립:17]", "[클립:18]", "[클립:19]", "[클립:21]"] and outs[2] == ["[클립:13]"]
+    b, outs = _echelon("카페", ["네", "근데 왜 무료로 해줘요?", "나중에 돈 드는 거 아니에요?"])
+    assert outs[1][0] == "[클립:22]" and outs[2][0] == "[클립:23]"
+    b, outs = _echelon("치킨집", ["네", "관심 없어요", "필요 없다니까요"])
+    assert outs[-1] == ["[클립:16]"] and b.ended and b.status == "거절"

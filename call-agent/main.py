@@ -100,6 +100,38 @@ def cmd_sound_test(cfg, args):
     print("\n삐 소리가 안 났다면: 작업 표시줄 오른쪽 아래 스피커 아이콘 → 음량과 출력 장치(스피커/헤드셋)를 확인하세요.")
 
 
+def cmd_tts_clips(cfg, args):
+    """녹음 대본 문장들을 내 복제 목소리로 한 번에 만들어 clips 로 저장 (ElevenLabs, 유료·한 번만).
+    만든 뒤에는 무료 모드 그대로 — 통화 중엔 인터넷·API 를 쓰지 않는다."""
+    import re
+    import wave
+    import yaml
+    from callagent.config import resolve
+    from callagent.voice import TTS_RATE, Voice
+    pdir = Path(cfg["voice"]["clips_dir"]).parent
+    script = pdir / "녹음대본.txt"
+    if not script.exists():
+        sys.exit("이 프로필에는 녹음대본.txt 가 없습니다. --profile 을 확인하세요.")
+    lines = []
+    for line in script.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"^(\d+)\s+(.*?)(\s{2,}\(.*\))?$", line.rstrip())
+        if m:
+            lines.append((int(m.group(1)), m.group(2).strip()))
+    out = resolve(cfg["voice"]["clips_dir"])
+    out.mkdir(parents=True, exist_ok=True)
+    voice = Voice(cfg)
+    catalog, prev = [], ""
+    for cid, text in lines:
+        pcm = b"".join(voice.speak(text, previous_text=prev))
+        with wave.open(str(out / f"clip_{cid:03}.wav"), "wb") as w:
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(TTS_RATE); w.writeframes(pcm)
+        catalog.append({"id": cid, "file": f"clip_{cid:03}.wav", "text": text, "use": True, "source": "복제 목소리"})
+        prev = text
+        print(f"  [{cid:3}] {text}")
+    (out / "clips.yaml").write_text(yaml.safe_dump(catalog, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    print(f"\n완료: {len(catalog)}문장 → {out}\n메뉴 4번(연습하기)으로 들어보세요. 어색한 문장은 그 번호만 직접 녹음해서 바꿀 수 있습니다.")
+
+
 def cmd_say(cfg, args):
     import time
     from callagent.audio import Speaker
@@ -139,6 +171,8 @@ def cmd_practice(cfg, args):
     if args.row:
         from callagent.customers import CustomerBook
         customer = CustomerBook(cfg).get(args.row)
+    elif getattr(args, "kind", ""):
+        customer = {"업종": args.kind, "_clinic": args.kind}
     from callagent.clips import TOKEN, ClipBank
     mode = voice_mode(cfg)
     clips = ClipBank(cfg) if mode in ("clips", "mixed") else None
@@ -181,7 +215,7 @@ def cmd_practice(cfg, args):
             for pcm in voice.speak(item):
                 speaker.write(pcm)
     a = cfg["agent"]
-    intro = fill(a["opening"], cfg, customer) + (" " + a["ai_disclosure"] if a.get("ai_disclosure") else "")
+    intro = fill(getattr(brain, "opening", None) or a["opening"], cfg, customer) + (" " + a["ai_disclosure"] if a.get("ai_disclosure") else "")
     print("치과 직원/원장님 역할로 입력하세요. (빈 줄: 종료)\n")
     hello = input("👤 상대: ").strip() or "여보세요"
     from callagent.clips import split_tokens
@@ -357,13 +391,15 @@ def main():
     p = sub.add_parser("say"); p.add_argument("text"); p.add_argument("--to-call", action="store_true"); p.set_defaults(fn=cmd_say)
     p = sub.add_parser("train"); p.add_argument("--folder", default="recordings"); p.set_defaults(fn=cmd_train)
     p = sub.add_parser("script"); p.add_argument("file"); p.set_defaults(fn=cmd_script)
-    p = sub.add_parser("practice"); p.add_argument("--row", type=int); p.add_argument("--voice", action="store_true"); p.set_defaults(fn=cmd_practice)
+    p = sub.add_parser("practice"); p.add_argument("--row", type=int); p.add_argument("--voice", action="store_true")
+    p.add_argument("--kind", default="", help="연습할 업종 (예: 미용실, 음식점)"); p.set_defaults(fn=cmd_practice)
     sub.add_parser("list").set_defaults(fn=cmd_list)
     p = sub.add_parser("doctor"); p.add_argument("--dial", default="", help="시험 전화 걸 번호 (내 다른 폰 번호)"); p.set_defaults(fn=cmd_doctor)
     sub.add_parser("phones").set_defaults(fn=cmd_phones)
     sub.add_parser("desktop").set_defaults(fn=cmd_desktop)
     sub.add_parser("menu").set_defaults(fn=cmd_menu)
     sub.add_parser("sound-test").set_defaults(fn=cmd_sound_test)
+    sub.add_parser("tts-clips").set_defaults(fn=cmd_tts_clips)
     p = sub.add_parser("profile-new"); p.add_argument("name"); p.set_defaults(fn=cmd_profile_new)
     for name in ("dial", "coach"):
         p = sub.add_parser(name)
