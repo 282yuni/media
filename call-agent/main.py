@@ -66,6 +66,40 @@ def cmd_clips(cfg, args):
     print(bank.catalog())
 
 
+def cmd_sound_test(cfg, args):
+    """스피커 확인: '삐' 소리 → (녹음이 있으면) 첫인사 녹음 재생."""
+    import time
+    import numpy as np
+    from callagent.audio import Speaker, list_devices
+    from callagent.clips import TOKEN, ClipBank, split_tokens
+    from callagent.voice import TTS_RATE
+    name = cfg["audio"].get("monitor_output", "")
+    print(f"소리를 '{name or 'Windows 기본 스피커'}' 로 내보냅니다.")
+    try:
+        out = Speaker(name, TTS_RATE)
+    except Exception as e:
+        print(f"❌ 스피커를 열 수 없습니다: {e}\n아래 장치 목록에서 스피커 이름을 확인하세요:")
+        list_devices()
+        return
+    t = np.arange(int(TTS_RATE * 0.8)) / TTS_RATE
+    out.write((np.sin(2 * np.pi * 660 * t) * 8000).astype(np.int16).tobytes())
+    print("1) '삐—' 소리가 나야 합니다.")
+    while out.pending_sec() > 0:
+        time.sleep(0.05)
+    bank = ClipBank(cfg)
+    first = next((int(m.group(1)) for x in split_tokens(cfg["agent"].get("opening", ""))
+                  if (m := TOKEN.fullmatch(x)) and int(m.group(1)) in bank.items), None)
+    if first:
+        print(f"2) 첫인사 녹음 [클립:{first}] 을 틉니다: {bank.text(first)}")
+        out.write(bank.pcm(first))
+        while out.pending_sec() > 0:
+            time.sleep(0.05)
+    else:
+        print("2) 이 프로필에는 아직 녹음이 없어 녹음 재생은 건너뜁니다 (메뉴 3번으로 넣기).")
+    out.close()
+    print("\n삐 소리가 안 났다면: 작업 표시줄 오른쪽 아래 스피커 아이콘 → 음량과 출력 장치(스피커/헤드셋)를 확인하세요.")
+
+
 def cmd_say(cfg, args):
     import time
     from callagent.audio import Speaker
@@ -115,6 +149,11 @@ def cmd_practice(cfg, args):
         from callagent.voice import TTS_RATE, Voice
         voice = Voice(cfg) if mode != "clips" else None
         speaker = Speaker(cfg["audio"].get("monitor_output", ""), TTS_RATE)
+        if mode == "clips" and not clips:
+            print("⚠ 이 프로필에는 아직 녹음이 없어서 소리가 나지 않습니다. 글자로만 보여드려요.\n"
+                  "  → 메뉴 3번(내 녹음 넣기)으로 녹음을 넣거나, 9번으로 녹음을 넣은 프로필로 바꾸세요.\n")
+        else:
+            print(f"🔊 소리는 '{cfg['audio'].get('monitor_output') or '기본 스피커'}' 로 나옵니다.\n")
 
     # 아직 녹음 전이면 녹음 대본 문장으로 보여주기 (녹음 전에도 흐름 연습 가능)
     import re as _re
@@ -158,6 +197,10 @@ def cmd_practice(cfg, args):
         print("🤖 AI: ", end="", flush=True)
         for s in brain.reply(heard):
             show(s)
+        if speaker:
+            import time as _t
+            while speaker.pending_sec() > 0:
+                _t.sleep(0.05)
         print()
         if brain.handoff:
             print("   → (여기서 담당자 연결 알림이 울립니다)")
@@ -320,6 +363,7 @@ def main():
     sub.add_parser("phones").set_defaults(fn=cmd_phones)
     sub.add_parser("desktop").set_defaults(fn=cmd_desktop)
     sub.add_parser("menu").set_defaults(fn=cmd_menu)
+    sub.add_parser("sound-test").set_defaults(fn=cmd_sound_test)
     p = sub.add_parser("profile-new"); p.add_argument("name"); p.set_defaults(fn=cmd_profile_new)
     for name in ("dial", "coach"):
         p = sub.add_parser(name)
