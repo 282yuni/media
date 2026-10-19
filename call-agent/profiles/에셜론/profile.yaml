@@ -16,3 +16,6 @@ rules:
 customers:
   path: "data/에셜론_고객.xlsx"
   columns: {name: "상호명", clinic: "상호명", phone: "전화번호", status: "상태", memo: "메모", last_call: "통화일시"}
+notify:
+  kakao_room: ""                    # ← 담당자 카톡 대화방 이름 (창 제목과 똑같이). 예: "김팀장"
+  on_status: ["제안서발송"]          # 이 결과로 끝난 통화만 녹취록을 보냄

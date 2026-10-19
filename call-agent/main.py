@@ -353,6 +353,9 @@ def cmd_dial(cfg, args):
         if summary:
             print(f"\n결과: {summary['status']}\n메모: {summary['memo']}")
         print(f"녹취 저장: {session.save_log(summary)}")
+        if summary:
+            from callagent.notify import notify_success
+            notify_success(cfg, who, summary, session.text())
 
 
 def cmd_desktop(cfg, args):
@@ -364,6 +367,27 @@ def cmd_desktop(cfg, args):
 def cmd_menu(cfg, args):
     from callagent.menu import main as menu
     menu(args.profile or "")
+
+
+def cmd_kakao_test(cfg, args):
+    """카톡 보내기 시험: 설정한 대화방에 시험 메시지 한 줄."""
+    from callagent.notify import send_kakao
+    room = (cfg.get("notify") or {}).get("kakao_room") or input("대화방 이름 (카톡 창 제목과 똑같이): ").strip()
+    if not room:
+        return
+    ok = send_kakao(room, "[전화상담] 카톡 보내기 시험입니다. 이 메시지가 보이면 성공!")
+    if ok and room != (cfg.get("notify") or {}).get("kakao_room"):
+        import re
+        target = ROOT / "profiles" / cfg["_profile"] / "profile.yaml" if cfg.get("_profile") else ROOT / "config.yaml"
+        t = target.read_text(encoding="utf-8") if target.exists() else ""
+        if re.search(r'(?m)^\s*kakao_room:', t):
+            t = re.sub(r'(?m)^(\s*kakao_room:\s*)"[^"]*"', rf'\1"{room}"', t)
+        else:
+            t += f'\nnotify:\n  kakao_room: "{room}"\n  on_status: ["제안서발송", "방문예약", "상담완료"]\n'
+        target.write_text(t, encoding="utf-8")
+        print(f"대화방 이름을 설정에 저장했습니다 → {target.name}")
+    print("✅ 보냈습니다. 카톡 창을 확인하세요." if ok else
+          f"❌ '{room}' 대화방 창을 못 찾았습니다. 그 대화방을 더블클릭해서 따로 창으로 열어 두고 다시 해보세요.")
 
 
 def cmd_list(cfg, args):
@@ -400,6 +424,8 @@ def run_call(cfg, book, customer, playbook, dialer) -> bool:
     print("\n통화 요약 중...")
     summary = session.brain.summarize(session.text())
     log = session.save_log(summary)
+    from callagent.notify import notify_success
+    notify_success(cfg, customer, summary, session.text())
     print(f"  결과: {summary['status']}\n  메모: {summary['memo']}")
     if summary.get("next_action"):
         print(f"  다음 할 일: {summary['next_action']} {summary.get('callback_time', '')}")
@@ -457,6 +483,7 @@ def main():
     sub.add_parser("sound-test").set_defaults(fn=cmd_sound_test)
     sub.add_parser("tts-clips").set_defaults(fn=cmd_tts_clips)
     sub.add_parser("voice-setup").set_defaults(fn=cmd_voice_setup)
+    sub.add_parser("kakao-test").set_defaults(fn=cmd_kakao_test)
     p = sub.add_parser("profile-new"); p.add_argument("name"); p.set_defaults(fn=cmd_profile_new)
     for name in ("dial", "coach"):
         p = sub.add_parser(name)

@@ -568,3 +568,19 @@ def test_silent_customer_hello_twice_then_hang_up(tmp_path, monkeypatch):
     call = S.CallSession(cfg, "", {"업종": "한식당", "_clinic": "테스트식당"})
     call.run(ready_prompt=False)
     assert played == [1, 32, 38]  # 첫인사 → 여보세요? → 여보세요? 제 말 잘 들리세요? → 끊기
+
+
+def test_success_call_sends_transcript_to_kakao(monkeypatch):
+    from callagent import notify
+    cfg = load_config(None, "에셜론")
+    cfg["notify"] = {"kakao_room": "김팀장", "on_status": ["제안서발송"]}
+    sent = []
+    monkeypatch.setattr(notify, "send_kakao", lambda room, text: sent.append((room, text)) or True)
+    summary = {"status": "제안서발송", "answers": {"연락처": "010 1234 5678"}, "callback_time": ""}
+    customer = {"_clinic": "맛나식당", "업종": "한식당", "_phone": "02-111-2222"}
+    notify.notify_success(cfg, customer, summary, "상대: 네 보내주세요\n상담원(AI): 감사합니다")
+    room, text = sent[0]
+    assert room == "김팀장" and "맛나식당" in text and "010 1234 5678" in text and "네 보내주세요" in text
+    sent.clear()
+    notify.notify_success(cfg, customer, {"status": "거절"}, "상대: 됐어요")  # 성사가 아니면 안 보냄
+    assert sent == []
