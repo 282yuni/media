@@ -495,7 +495,7 @@ def test_echelon_restaurant_full_call_records_phone():
 
 def test_echelon_objections():
     b, outs = _echelon("헤어살롱", ["네", "광고하고 있어요", "네 그럼 보내주세요"])
-    assert outs[1] == ["[클립:17]", "[클립:18]", "[클립:19]", "[클립:21]"] and outs[2] == ["[클립:13]"]
+    assert outs[1] == ["[클립:17]", "[클립:36]", "[클립:37]", "[클립:21]"] and outs[2] == ["[클립:13]"]
     b, outs = _echelon("카페", ["네", "근데 왜 무료로 해줘요?", "나중에 돈 드는 거 아니에요?"])
     assert outs[1][0] == "[클립:22]" and outs[2][0] == "[클립:23]"
     b, outs = _echelon("치킨집", ["네", "관심 없어요", "필요 없다니까요"])

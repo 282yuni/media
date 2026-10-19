@@ -58,7 +58,25 @@ def cmd_clone(cfg, args):
 
 def cmd_clips(cfg, args):
     from callagent.clips import ClipBank, cut
-    if args.file:
+    if args.file and args.file.lower().endswith(".zip"):
+        # 다듬어서 받은 녹음 묶음(clip_###.wav + clips.yaml) → 이 프로필 녹음으로 통째로 교체
+        import shutil
+        import zipfile
+        from callagent.config import resolve
+        out = resolve(cfg["voice"]["clips_dir"])
+        if out.exists():
+            backup = out.with_name("clips_예전")
+            shutil.rmtree(backup, ignore_errors=True)
+            out.rename(backup)
+            print(f"예전 녹음은 {backup} 로 옮겨 두었습니다.")
+        out.mkdir(parents=True)
+        with zipfile.ZipFile(args.file) as z:
+            for name in z.namelist():
+                base = Path(name).name
+                if base.endswith(".wav") or base == "clips.yaml":
+                    (out / base).write_bytes(z.read(name))
+        print(f"녹음 묶음을 넣었습니다 → {out}")
+    elif args.file:
         print("⚠ 본인 목소리 녹음만 쓰세요. 상대방 목소리 부분은 clips.yaml 에서 use: false 로 꺼주세요.")
         cut(cfg, Path(args.file), noise_db=args.noise, min_silence=args.gap)
     bank = ClipBank(cfg)

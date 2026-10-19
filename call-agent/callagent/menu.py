@@ -43,7 +43,7 @@ def main(profile: str = "") -> None:
         elif c == "2":
             run("phones")
         elif c == "3":
-            f = input("녹음 파일을 이 창으로 끌어다 놓고 Enter: ").strip().strip('"')
+            f = input("녹음 파일(또는 다듬어 받은 ZIP)을 이 창으로 끌어다 놓고 Enter: ").strip().strip('"')
             if f:
                 run(*p, "clips", f)
         elif c == "4":
