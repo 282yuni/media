@@ -108,7 +108,7 @@ def cmd_tts_clips(cfg, args):
     import yaml
     from callagent.config import resolve
     from callagent.voice import TTS_RATE, Voice
-    pdir = Path(cfg["voice"]["clips_dir"]).parent
+    pdir = ROOT / "profiles" / cfg["_profile"] if cfg.get("_profile") else Path(cfg["voice"]["clips_dir"]).parent
     script = pdir / "녹음대본.txt"
     if not script.exists():
         sys.exit("이 프로필에는 녹음대본.txt 가 없습니다. --profile 을 확인하세요.")
@@ -120,6 +120,8 @@ def cmd_tts_clips(cfg, args):
     out = resolve(cfg["voice"]["clips_dir"])
     out.mkdir(parents=True, exist_ok=True)
     voice = Voice(cfg)
+    voice.model = "eleven_multilingual_v2"  # 미리 만들어 두는 거라 속도보다 자연스러움 우선
+    print(f"녹음 대본 {len(lines)}문장을 내 목소리로 만드는 중… (2~5분)")
     catalog, prev = [], ""
     for cid, text in lines:
         pcm = b"".join(voice.speak(text, previous_text=prev))
@@ -130,6 +132,42 @@ def cmd_tts_clips(cfg, args):
         print(f"  [{cid:3}] {text}")
     (out / "clips.yaml").write_text(yaml.safe_dump(catalog, allow_unicode=True, sort_keys=False), encoding="utf-8")
     print(f"\n완료: {len(catalog)}문장 → {out}\n메뉴 4번(연습하기)으로 들어보세요. 어색한 문장은 그 번호만 직접 녹음해서 바꿀 수 있습니다.")
+
+
+def cmd_voice_setup(cfg, args):
+    """메뉴 c: 내 녹음으로 목소리 복제(처음 한 번) → 이 프로필의 녹음 대본을 내 목소리로 전부 만들기."""
+    import importlib
+    import os
+    import subprocess
+    try:
+        importlib.import_module("elevenlabs")
+    except ImportError:
+        print("필요한 프로그램(elevenlabs) 설치 중…")
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "elevenlabs"], check=True)
+    if not os.environ.get("ELEVENLABS_API_KEY"):
+        print("ElevenLabs API 키가 필요합니다 (elevenlabs.io → 로그인 → 오른쪽 아래 프로필 → API Keys → Create).\n"
+              "목소리 복제는 Starter 요금제 이상에서 됩니다. 대본 한 번 만드는 데 글자 약 2,000자 사용.")
+        key = input("API 키를 붙여넣고 Enter: ").strip()
+        if not key:
+            return
+        env = ROOT / ".env"
+        lines = [l for l in (env.read_text(encoding="utf-8").splitlines() if env.exists() else [])
+                 if not l.startswith("ELEVENLABS_API_KEY")]
+        env.write_text("\n".join(lines + [f"ELEVENLABS_API_KEY={key}"]) + "\n", encoding="utf-8")
+        os.environ["ELEVENLABS_API_KEY"] = key
+    if not cfg["voice"].get("voice_id"):
+        from callagent.voice import clone_voice
+        print("\n목소리 복제 (처음 한 번): 내 목소리만 들어간 녹음 파일(1~10분)이 필요합니다.")
+        f = input("녹음 파일을 이 창으로 끌어다 놓고 Enter: ").strip().strip('"')
+        if not f or not Path(f).exists():
+            sys.exit("파일을 찾지 못했습니다.")
+        if input("이 녹음이 모두 '내' 목소리입니까? (y/n) ").strip().lower() != "y":
+            return
+        vid = clone_voice(Path(f).parent, "전화상담 내 목소리", files=[Path(f)])
+        save_voice_id(vid)
+        cfg["voice"]["voice_id"] = vid
+        print(f"복제 완료 (voice_id={vid}). 다음부터는 이 단계를 건너뜁니다.")
+    cmd_tts_clips(cfg, args)
 
 
 def cmd_say(cfg, args):
@@ -400,6 +438,7 @@ def main():
     sub.add_parser("menu").set_defaults(fn=cmd_menu)
     sub.add_parser("sound-test").set_defaults(fn=cmd_sound_test)
     sub.add_parser("tts-clips").set_defaults(fn=cmd_tts_clips)
+    sub.add_parser("voice-setup").set_defaults(fn=cmd_voice_setup)
     p = sub.add_parser("profile-new"); p.add_argument("name"); p.set_defaults(fn=cmd_profile_new)
     for name in ("dial", "coach"):
         p = sub.add_parser(name)

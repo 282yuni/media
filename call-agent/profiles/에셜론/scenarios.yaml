@@ -52,15 +52,10 @@ scenarios:
     reply: ["[클립:30]"]
     status: "수신거부"
     end: true
-  - name: AI 질문
-    always: true
-    keywords: ["AI", "에이아이", "기계", "로봇", "자동응답", "사람이에요", "사람 맞", "녹음이에요", "ARS"]
-    reply: ["[클립:33]"]
-    handoff: true
   - name: 담당자 요청
     always: true
     keywords: ["담당자", "바꿔", "직접 통화", "책임자", "팀장"]
-    reply: ["[클립:34]"]
+    reply: ["[클립:33]"]
     handoff: true
   - name: 바쁨
     always: true
@@ -94,7 +89,7 @@ scenarios:
     reply: ["[클립:24]"]
   - name: 사진 보내는 법
     keywords: ["어떻게 보내", "어디로 보내", "사진은 어디", "카톡으로", "문자로 보내"]
-    reply: ["[클립:36]"]
+    reply: ["[클립:35]"]
   - name: 생각해볼게
     interrupt: true
     keywords: ["생각해 볼", "생각해볼", "고민", "나중에 볼", "검토해 볼", "알아보고"]

@@ -33,6 +33,7 @@ def main(profile: str = "") -> None:
               "  7. 아무 번호로 걸기\n"
               "  8. 녹음 대본 보기\n"
               "  9. 프로필 바꾸기\n"
+              "  c. 내 목소리로 대본 만들기 (녹음 대신 복제 목소리로 한 번에)\n"
               "  s. 소리 테스트        (스피커에서 소리가 나는지)\n"
               "  u. 프로그램 업데이트 (고친 버전 받기)\n"
               "  0. 끝내기")
@@ -67,6 +68,8 @@ def main(profile: str = "") -> None:
                 print(f"  {i}. {n}")
             k = input("번호 (기본 설정은 0): ").strip()
             profile = names[int(k) - 1] if k.isdigit() and 0 < int(k) <= len(names) else ""
+        elif c.lower() == "c":
+            run(*p, "voice-setup")
         elif c.lower() == "s":
             run(*p, "sound-test")
         elif c.lower() == "u":

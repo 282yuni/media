@@ -87,8 +87,8 @@ class Voice:
         )
 
 
-def clone_voice(folder: Path, name: str) -> str:
-    files = audio_files(folder)
+def clone_voice(folder: Path, name: str, files: list[Path] | None = None) -> str:
+    files = files or audio_files(folder)
     if not files:
         raise RuntimeError(f"{folder} 에 음성 파일이 없습니다.")
     print(f"샘플 {len(files)}개로 목소리를 복제합니다: " + ", ".join(p.name for p in files))

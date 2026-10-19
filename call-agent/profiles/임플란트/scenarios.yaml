@@ -1,6 +1,6 @@
 # 임플란트 혜택 이벤트 콜 상황표. 번호 = 녹음대본.txt 번호.
 # interrupt: true → 질문의 대답을 기다리는 중에도 이 상황으로 대응 (거절·망설임 등)
-# always: true  → 질문의 대답을 기다리는 중에도 끼어드는 상황 (수신거부, AI 질문 등)
+# always: true  → 질문의 대답을 기다리는 중에도 끼어드는 상황 (수신거부, 담당자 요청 등)
 # ask: 항목     → 이 멘트가 질문이면 고객 대답을 그대로 메모에 적고 다음 멘트로
 # resume: true  → 그 대답을 하고 바로 스크립트 다음 멘트로 이어감
 # 상황의 ask + after_answer → 그 상황에서 물은 질문의 대답을 적고, 정해 둔 말을 하고 (end 면) 끊음
@@ -32,15 +32,10 @@ scenarios:
     reply: ["[클립:30]"]
     status: "수신거부"
     end: true
-  - name: AI 질문
-    always: true
-    keywords: ["AI", "에이아이", "기계", "로봇", "자동응답", "사람이에요", "사람 맞", "녹음이에요", "ARS"]
-    reply: ["[클립:34]"]
-    handoff: true
   - name: 담당자 요청
     always: true
     keywords: ["담당자", "바꿔", "직접 통화", "원장님 바꿔", "실장님"]
-    reply: ["[클립:35]"]
+    reply: ["[클립:34]"]
     handoff: true
   - name: 바쁨
     always: true
@@ -75,14 +70,14 @@ scenarios:
   - name: 다니는 치과 있음
     interrupt: true
     keywords: ["다니는 데", "다니는 치과", "다니고 있", "하는 데 있", "이미 했"]
-    reply: ["[클립:36]"]
+    reply: ["[클립:35]"]
   - name: 무서움·통증 걱정
     interrupt: true
     keywords: ["무서", "아플까", "아프지 않", "겁나", "걱정"]
-    reply: ["[클립:37]"]
+    reply: ["[클립:36]"]
   - name: 나이·뼈 걱정
     keywords: ["나이", "뼈", "당뇨", "혈압", "가능할까", "될까요"]
-    reply: ["[클립:38]"]
+    reply: ["[클립:37]"]
   - name: 생각해볼게
     interrupt: true
     keywords: ["생각해 볼", "생각해볼", "고민", "상의", "가족이랑", "알아보고"]

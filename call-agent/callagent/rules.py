@@ -97,6 +97,17 @@ class RuleBrain:
         self.ended = self.handoff = False
         asked = self.waiting
         sc = self.match(heard, answering=bool(asked))
+        questioning = "?" in heard or re.search(r"(이에요|예요|인가요|나요|까요|뭐|어떻게|왜)\??$", heard.strip())
+        if asked and not sc and questioning and self.default.get("handoff", True):
+            # 질문의 대답 대신 모르는 걸 되물음 → 지어내지 않고 기본 대답(확인 후 연락) + 나에게 넘김
+            text, why = self._pick("__default__", self.default.get("reply", [])), "모르는 질문 → 넘김"
+            self.handoff = True
+            self.waiting = None
+            self.history.append("맞는 상황 없음")
+            print(f"   (판단: {why})")
+            self.messages += [{"role": "user", "content": heard}, {"role": "assistant", "content": text}]
+            yield from split_tokens(text)
+            return
         if asked and not sc:
             self.answers[asked] = heard.strip()  # 고객 대답 그대로 메모
             self.waiting = None

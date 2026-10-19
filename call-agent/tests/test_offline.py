@@ -435,7 +435,7 @@ def test_implant_refusal_during_questions_and_ai_question():
     b, outs = _implant(["네", "네", "네", "다시는 전화하지 마세요"])
     assert outs[-1] == ["[클립:30]"] and b.status == "수신거부"
     b, outs = _implant(["네", "근데 이거 ARS예요? 사람이에요?"])
-    assert outs[-1] == ["[클립:34]"] and b.handoff
+    assert outs[-1] == ["[클립:32]"] and b.handoff  # 전용 상황 없음 → 확인 후 연락 + 나에게 넘김
 
 
 def test_implant_two_refusals_end_call():
@@ -500,3 +500,8 @@ def test_echelon_objections():
     assert outs[1][0] == "[클립:22]" and outs[2][0] == "[클립:23]"
     b, outs = _echelon("치킨집", ["네", "관심 없어요", "필요 없다니까요"])
     assert outs[-1] == ["[클립:16]"] and b.ended and b.status == "거절"
+
+
+def test_echelon_unknown_question_hands_off_without_claiming_human():
+    b, outs = _echelon("한식당", ["네", "이거 혹시 자동응답이에요?"])
+    assert outs[-1] == ["[클립:31]"] and b.handoff  # "확인해서 다시 연락드릴게요" + 나에게 넘김

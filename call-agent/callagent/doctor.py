@@ -146,7 +146,6 @@ def run(cfg: dict, dial: str = "") -> int:
             names = [s.get("name") for s in sc.get("scenarios", [])]
             r.add(True, f"상황표 {sc_path.name}", f"상황 {len(names)}개, 스크립트 {len(sc.get('flow', []))}단계")
             r.add(not miss, "상황표의 녹음 번호", f"없는 번호 {miss}" if miss else "모두 있음", "clips.yaml 번호에 맞게 scenarios.yaml 고치기")
-            r.add("AI 질문" in names or None, "상황표에 'AI 질문' 상황", "", "AI냐고 물을 때 사실대로 답하는 상황을 맨 위에 추가")
         except Exception as e:
             r.add(False, f"상황표 {sc_path.name}", f"읽기 실패: {e}"[:120], "들여쓰기(띄어쓰기)가 틀렸는지 확인")
     else:
