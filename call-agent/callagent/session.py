@@ -247,7 +247,10 @@ class CallSession:
                         if silent_rounds > a.get("hello_again_times", 2):
                             print("상대가 응답이 없어 통화를 마칩니다.")
                             break
-                        self.say(split_tokens(a.get("hello_again", "여보세요? 제 말 잘 들리세요?")), listener, mouth, ctl)
+                        hello = a.get("hello_again", "여보세요? 제 말 잘 들리세요?")
+                        if isinstance(hello, list):  # ["[클립:32]", "[클립:38]"] → 첫 번째, 두 번째 다르게
+                            hello = hello[min(silent_rounds, len(hello)) - 1] if hello else ""
+                        self.say(split_tokens(hello), listener, mouth, ctl)
                         continue
                     silent_rounds = 0
                     t0 = time.time()

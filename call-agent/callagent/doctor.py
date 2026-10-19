@@ -135,7 +135,8 @@ def run(cfg: dict, dial: str = "") -> int:
 
     ag = cfg.get("agent", {})
     for key in ("opening", "ai_disclosure", "hello_again"):
-        miss = missing(str(ag.get(key, "")))
+        val = ag.get(key, "")
+        miss = missing(" ".join(val) if isinstance(val, list) else str(val))
         r.add(not miss, f"agent.{key}", str(ag.get(key, "")) + (f" (없는 번호 {miss})" if miss else ""), "clips.yaml 에 있는 번호로 고치기")
     sc_path = resolve(cfg.get("rules", {}).get("scenarios", "scenarios.yaml"))
     if sc_path.exists():

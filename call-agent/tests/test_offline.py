@@ -567,4 +567,4 @@ def test_silent_customer_hello_twice_then_hang_up(tmp_path, monkeypatch):
     monkeypatch.setattr(S.Console, "_start", classmethod(lambda cls: None))
     call = S.CallSession(cfg, "", {"업종": "한식당", "_clinic": "테스트식당"})
     call.run(ready_prompt=False)
-    assert played == [1, 32, 32]  # 첫인사 → 여보세요? → 여보세요? → 끊기
+    assert played == [1, 32, 38]  # 첫인사 → 여보세요? → 여보세요? 제 말 잘 들리세요? → 끊기
