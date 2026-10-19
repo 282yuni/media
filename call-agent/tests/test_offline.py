@@ -634,3 +634,25 @@ def test_menu_finds_clip_zip_in_downloads(tmp_path, monkeypatch):
     answers = iter(["", ""])
     monkeypatch.setattr("builtins.input", lambda *_: next(answers))
     assert menu.ask_clip_file().endswith("에셜론_완성녹음.zip")
+
+
+def test_menu_offers_new_zip_on_start(tmp_path, monkeypatch):
+    import zipfile
+    from callagent import menu
+    d = tmp_path / "Downloads"
+    d.mkdir()
+    with zipfile.ZipFile(d / "에셜론_완성녹음.zip", "w") as z:
+        z.writestr("clips.yaml", "[]")
+    monkeypatch.setattr(menu.Path, "home", classmethod(lambda cls: tmp_path))
+    monkeypatch.setattr(menu, "ROOT", tmp_path)
+    calls = []
+    monkeypatch.setattr(menu, "run", lambda *a: calls.append(a))
+    monkeypatch.setattr("builtins.input", lambda *_: "")
+    menu.offer_new_zip(["에셜론", "에셜론1_정리본", "임플란트"])
+    assert calls and calls[0][:3] == ("--profile", "에셜론", "clips")
+    calls.clear()
+    clips = tmp_path / "profiles" / "에셜론" / "clips"
+    clips.mkdir(parents=True)
+    (clips / "clips.yaml").write_text("[]")  # 이미 넣은 뒤(더 새것)면 다시 묻지 않음
+    menu.offer_new_zip(["에셜론"])
+    assert not calls

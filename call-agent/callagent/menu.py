@@ -46,6 +46,24 @@ def ask_clip_file() -> str:
     return str(zips[int(k) - 1]) if k.isdigit() and 0 < int(k) <= min(5, len(zips)) else ""
 
 
+def offer_new_zip(names: list[str]) -> None:
+    """켤 때: 다운로드 폴더에 지금 녹음보다 새 녹음 ZIP 이 있으면 Enter 한 번으로 넣기."""
+    zips = find_clip_zips()
+    if not zips:
+        return
+    z = zips[0]
+    # ZIP 이름이 프로필 이름으로 시작하면 그 프로필에 (예: 에셜론_완성녹음.zip → 에셜론). 긴 이름 먼저
+    target = next((n for n in sorted(names, key=len, reverse=True) if z.name.startswith(n)), "")
+    if not target:
+        return
+    cur = ROOT / "profiles" / target / "clips" / "clips.yaml"
+    if cur.exists() and cur.stat().st_mtime >= z.stat().st_mtime:
+        return
+    k = input(f"\n새 녹음 묶음을 찾았습니다: {z.name}\n  → '{target}' 프로필에 넣을까요? (Enter = 넣기 / n = 안 넣기): ").strip().lower()
+    if k != "n":
+        run("--profile", target, "clips", str(z))
+
+
 def run(*args: str) -> None:
     subprocess.run([sys.executable, str(ROOT / "main.py"), *args], cwd=ROOT)
     input("\n(Enter 를 누르면 메뉴로)")
@@ -53,6 +71,10 @@ def run(*args: str) -> None:
 
 def main(profile: str = "") -> None:
     names = profiles()
+    try:
+        offer_new_zip(names)
+    except Exception as e:  # 찾기에 실패해도 메뉴는 열리게
+        print(f"(새 녹음 찾기 건너뜀: {e})")
     if not profile and names:
         # 녹음을 넣은 프로필 우선 → 없으면 임플란트
         recorded = [n for n in names if (ROOT / "profiles" / n / "clips" / "clips.yaml").exists()]
