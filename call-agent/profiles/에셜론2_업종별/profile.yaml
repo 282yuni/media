@@ -6,7 +6,7 @@ agent:
   product: "네이버 플레이스 상위노출 업종별 안내 (음식점·미용실·네일·피부)"
   opening: "[클립:1]"
   ai_disclosure: ""
-  fillers: ["[클립:25]", "[클립:26]"]
+  fillers: ["[클립:25]"]   # 26번은 임시 녹음("충분히 이해해요")이라 맞장구로 쓰면 거절처럼 들림
   hello_again: ["[클립:32]", "[클립:38]"]
   hello_again_times: 2
 voice:
