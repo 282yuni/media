@@ -9,7 +9,7 @@ flows:
       - {say: "[클립:15]", status: "제안서발송", end: true}
   - name: 기본
     match: []
-    opening: "[클립:39]"
+    opening: "[클립:1]"    # 39번은 두 녹음을 이어 붙여 "대표님" 뒤가 끊겨서, 한 번에 읽은 1번으로 (2026-10-20)
     steps:
       - {say: "[클립:3]", ask: "관심"}
       - {say: "[클립:13]", ask: "연락처", status: "관심"}
