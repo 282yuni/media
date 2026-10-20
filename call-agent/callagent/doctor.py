@@ -48,6 +48,126 @@ def adb_devices(adb: str = "adb") -> list[dict]:
     return phones
 
 
+# ── 폰별 USB 사운드카드 자동 찾기 ──────────────────────────────
+# USB 꽂는 자리를 바꾸거나 허브 전원이 끊기면 Windows 가 '마이크(2- USB Audio Device)' 의 번호를 4-, 6- 로 바꾼다.
+# 폰에서 벨소리를 틀고, 모든 USB 사운드카드 마이크를 동시에 들어서 소리가 크게 들어온 카드가 그 폰의 카드.
+CARD = re.compile(r"(\d+)- USB Audio Device")
+BEEP = "file:///system/media/audio/ringtones/Beep-Beep.ogg"
+
+
+def usb_cards() -> dict[str, dict]:
+    """꽂혀 있는 USB 사운드카드: {번호: {"input": (장치번호, 이름), "output": (장치번호, 이름)}}"""
+    import sounddevice as sd
+    cards: dict[str, dict] = {}
+    for i, dv in enumerate(sd.query_devices()):
+        m = CARD.search(dv["name"])
+        if not m:
+            continue
+        card = cards.setdefault(m.group(1), {})
+        if dv["max_input_channels"] > 0:
+            card.setdefault("input", (i, dv["name"]))  # 같은 장치가 여러 번 나오면 맨 앞(MME) 것
+        if dv["max_output_channels"] > 0:
+            card.setdefault("output", (i, dv["name"]))
+    return {n: c for n, c in cards.items() if "input" in c and "output" in c}
+
+
+def record_levels(devices: dict[str, int], sec: float = 4.0) -> dict[str, float]:
+    """여러 마이크를 동시에 sec 초 듣고 각각의 소리 크기(RMS)."""
+    import numpy as np
+    import sounddevice as sd
+    got: dict[str, list] = {n: [] for n in devices}
+    streams = []
+    for n, idx in devices.items():
+        def cb(indata, frames, t, status, n=n):
+            got[n].append(indata[:, 0].copy())
+        try:
+            s = sd.InputStream(samplerate=int(sd.query_devices(idx)["default_samplerate"]), channels=1,
+                               dtype="float32", device=idx, callback=cb)
+            s.start()
+            streams.append(s)
+        except Exception:
+            pass  # 못 여는 카드는 0 으로
+    time.sleep(sec)
+    for s in streams:
+        s.stop()
+        s.close()
+    return {n: float(np.sqrt(np.mean(np.square(np.concatenate(v))))) if v else 0.0 for n, v in got.items()}
+
+
+def phone_in_call(adb: str, serial: str, sh=subprocess.run) -> bool:
+    """통화 중(또는 알 수 없음)이면 True — 그때는 벨소리를 틀지 않는다."""
+    try:
+        out = sh([adb, "-s", serial, "shell", "dumpsys", "telephony.registry"], capture_output=True, text=True,
+                 encoding="utf-8", errors="ignore", timeout=10).stdout
+    except Exception:
+        return True
+    states = re.findall(r"mCallState=(\d)", out or "")
+    return not states or any(x != "0" for x in states)
+
+
+def find_phone_soundcard(serial: str, adb: str = "adb", sh=subprocess.run, cards=None,
+                         record=record_levels) -> tuple[dict | None, str]:
+    """이 폰(serial)이 꽂힌 USB 사운드카드 찾기. 돌려주는 값: (카드 또는 None, 사람이 읽을 설명)
+    카드 = {"number": "6", "input": "마이크(6- USB Audio Device)", "output": "스피커(6- USB Audio Device)"}"""
+    if phone_in_call(adb, serial, sh):
+        return None, "폰이 통화 중이거나 상태를 알 수 없어서 찾지 않았습니다. 통화가 끝난 뒤 다시 해 주세요."
+    cards = usb_cards() if cards is None else cards
+    if not cards:
+        return None, "PC 에 USB 사운드카드가 안 보입니다. 사운드카드 USB 가 꽂혀 있는지 확인해 주세요."
+    target = [adb, "-s", serial, "shell"]
+    try:
+        sh([*target, "am", "start", "-a", "android.intent.action.VIEW", "-d", BEEP, "-t", "audio/ogg"],
+           capture_output=True, timeout=10)
+        time.sleep(0.5)
+        levels = record({n: c["input"][0] for n, c in cards.items()})
+    finally:
+        try:
+            sh([*target, "input", "keyevent", "KEYCODE_HOME"], capture_output=True, timeout=10)
+        except Exception:
+            pass
+    ranked = sorted(levels.items(), key=lambda kv: kv[1], reverse=True)
+    detail = ", ".join(f"{n}-번 {v:.3f}" for n, v in ranked)
+    best, loud = ranked[0]
+    second = ranked[1][1] if len(ranked) > 1 else 0.0
+    if loud < 0.005:
+        return None, (f"폰 소리가 어느 사운드카드에도 안 들어왔습니다 ({detail}). "
+                      "이어폰 잭이 끝까지 꽂혔는지, 폰 미디어 소리가 켜져 있는지 확인해 주세요.")
+    if loud < second * 5:
+        return None, f"어느 카드인지 확실하지 않습니다 ({detail}). 다른 폰이 통화 중이면 끝난 뒤 다시 해 주세요."
+    c = cards[best]
+    return {"number": best, "input": c["input"][1], "output": c["output"][1]}, detail
+
+
+def write_soundcard(path, card: dict) -> None:
+    """설정 파일의 audio.call_input / audio.ai_output 두 줄의 장치 이름만 바꾼다 (주석·다른 설정은 그대로)."""
+    text = path.read_text(encoding="utf-8")
+    for key, name in (("call_input", card["input"]), ("ai_output", card["output"])):
+        text = re.sub(rf'(?m)^(\s*{key}:\s*)"[^"]*"', lambda m, name=name: f'{m.group(1)}"{name}"', text, count=1)
+    path.write_text(text, encoding="utf-8")
+
+
+def fix_soundcard(path, audio: dict, serial: str, adb: str = "adb", cards=None, **kw) -> dict | None:
+    """설정의 USB 사운드카드가 지금 PC 에 없으면 (번호가 바뀐 경우) 폰 벨소리로 찾아서 설정 파일을 고친다.
+    가상 케이블처럼 USB 사운드카드가 아닌 설정이거나, 장치가 그대로 있으면 아무것도 안 한다."""
+    name = audio.get("call_input", "")
+    if not serial or not CARD.search(name):
+        return None
+    cards = usb_cards() if cards is None else cards
+    if any(name.lower() in c["input"][1].lower() for c in cards.values()):
+        return None  # 그대로 있음
+    print(f"\n🔎 설정에 적힌 '{name}' 이 지금 PC 에 없습니다 (USB 꽂는 자리를 바꾸면 번호가 바뀝니다).\n"
+          f"   폰({serial})에서 '삑삑' 소리를 4초 틀어서 어느 사운드카드인지 찾습니다…")
+    card, detail = find_phone_soundcard(serial, adb, cards=cards, **kw)
+    if not card:
+        print(f"   ⚠️ 못 찾았습니다: {detail}")
+        return None
+    write_soundcard(path, card)
+    audio["call_input"], audio["ai_output"] = card["input"], card["output"]
+    print(f"   ✅ 찾았습니다: {card['number']}-번 사운드카드 ({detail})\n"
+          f"   {path.name} 를 고쳤습니다 → 들어오는 소리 '{card['input']}', 내보내는 소리 '{card['output']}'")
+    return card
+
+
 def run(cfg: dict, dial: str = "") -> int:
     r = Report()
     print(f"=== 자가 점검 ({datetime.now():%Y-%m-%d %H:%M}) / 설정 파일: {CONFIG_PATH.name} ===\n")
@@ -67,6 +187,7 @@ def run(cfg: dict, dial: str = "") -> int:
     d = cfg.get("dialer", {})
     from .adbtool import find_adb
     adb = find_adb(d.get("adb_path", "adb"))
+    phones: list[dict] = []
     if not shutil.which(adb):
         r.add(False if d.get("mode") == "adb" else None, "adb (자동 걸기)", "설치 안 됨",
               "메뉴 2번(폰 연결 설정)을 누르면 자동으로 받아서 설치합니다")
@@ -102,6 +223,14 @@ def run(cfg: dict, dial: str = "") -> int:
 
     # 3. 소리 장치
     a = cfg.get("audio", {})
+    ready = [p["serial"] for p in phones if p["state"] == "device"]
+    serial = d.get("adb_serial", "") or (ready[0] if len(ready) == 1 else "")
+    if serial in ready:  # USB 사운드카드 번호가 바뀌었으면 폰 벨소리로 찾아서 설정 고치기
+        try:
+            from . import config
+            fix_soundcard(config.CONFIG_PATH, a, serial, adb)
+        except Exception as e:
+            print(f"(사운드카드 자동 찾기 건너뜀: {e})")
     try:
         from .audio import find_device
         for key, kind, what in [("call_input", "input", "상대 목소리 들어오는 곳"), ("ai_output", "output", "내 녹음 내보내는 곳"),
@@ -213,6 +342,10 @@ def setup_phones(adb: str = "adb") -> None:
             text = re.sub(r'(?m)^logs_dir: "logs"', 'logs_dir: "logs/phone2"', text)
         path.write_text(text, encoding="utf-8")
         print(f"📱 {p['model']} (안드로이드 {p['android']}, {p['serial']}) → {path.name}")
+        try:
+            fix_soundcard(path, (yaml.safe_load(text) or {}).get("audio") or {}, p["serial"], adb)
+        except Exception as e:
+            print(f"(사운드카드 자동 찾기 건너뜀: {e})")
     if len(phones) > 1:
         print("\n두 번째 폰 설정(config2.yaml)에서 꼭 바꿀 것:\n"
               "  1) audio 장치 — 두 번째 폰 소리가 들어오고 나가는 장치 이름\n"

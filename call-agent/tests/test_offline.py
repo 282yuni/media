@@ -343,8 +343,8 @@ def test_profile_overrides_and_brief(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "CONFIG_PATH", root / "config.yaml")
     cfg = config.load_config(None, "곤란한전화")
     assert cfg["engine"] == "ai" and cfg["voice"]["mode"] == "mixed"
-    assert cfg["voice"]["clips_dir"].endswith("곤란한전화/clips")
-    assert cfg["logs_dir"].endswith("logs/곤란한전화")
+    assert cfg["voice"]["clips_dir"].replace("\\", "/").endswith("곤란한전화/clips")
+    assert cfg["logs_dir"].replace("\\", "/").endswith("logs/곤란한전화")
     assert cfg["audio"]["call_input"] == "CABLE Output"  # 프로필에 없는 설정은 기본값 유지
     assert "AI 비서" in cfg["agent"]["ai_disclosure"]
 
@@ -521,7 +521,7 @@ def _run(profile, kind, said):
 
 def test_echelon_script1_cleaned_version():
     cfg, b, outs = _run("에셜론1_정리본", "한식당", ["네", "네 좋아요", "010 1234 5678"])
-    assert cfg["agent"]["opening"] == "[클립:39]" and cfg["voice"]["clips_dir"].endswith("에셜론/clips")
+    assert cfg["agent"]["opening"] == "[클립:1]" and cfg["voice"]["clips_dir"].replace("\\", "/").endswith("에셜론/clips")
     assert outs == [["[클립:3]"], ["[클립:13]"], ["[클립:15]"]] and b.ended
     assert b.summarize("")["answers"]["연락처"] == "010 1234 5678"
     _, b, outs = _run("에셜론1_정리본", "헤어살롱", ["네", "광고하고 있어요", "네 보내주세요"])
@@ -662,7 +662,7 @@ def test_echelon_auto_picks_script_by_business_type():
     from callagent.config import script_for
     from callagent.rules import RuleBrain
     cfg = load_config(None, "에셜론_자동")
-    assert cfg["agent"]["opening"] == "[클립:39]"  # 점검·연습은 기본(스크립트1)
+    assert cfg["agent"]["opening"] == "[클립:1]"  # 점검·연습은 기본(스크립트1)
     pick = lambda c: script_for(cfg, c).get("_script")
     assert pick({"업종": "한식당"}) == "에셜론2_업종별"
     assert pick({"업종": "헤어살롱"}) == "에셜론2_업종별"
@@ -878,3 +878,94 @@ def test_dialer_trusts_hangup_only_after_call_seen(monkeypatch):
     assert d.call_state() == "offhook"
     out["v"] = "mCallState=0\n"
     assert d.is_idle()
+
+
+def _fake_cards():
+    return {"6": {"input": (3, "마이크(6- USB Audio Device)"), "output": (8, "스피커(6- USB Audio Device)")},
+            "7": {"input": (4, "마이크(7- USB Audio Device)"), "output": (9, "스피커(7- USB Audio Device)")}}
+
+
+class _FakeAdb:
+    """adb 대신: 통화 상태를 돌려주고 보낸 명령을 기억한다."""
+    def __init__(self, call_state="0"):
+        self.state, self.cmds = call_state, []
+
+    def __call__(self, cmd, **kw):
+        self.cmds.append(cmd)
+        return types.SimpleNamespace(stdout=f"mCallState={self.state}\n", returncode=0)
+
+
+def test_soundcard_found_by_phone_beep_and_only_two_lines_change(tmp_path, monkeypatch):
+    from callagent import doctor
+    monkeypatch.setattr(doctor.time, "sleep", lambda s: None)
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text('audio:\n  # 내 메모\n  call_input: "마이크(2- USB Audio Device)"   # 예전 번호\n'
+                   '  ai_output: "스피커(2- USB Audio Device)"\n  monitor_output: "스피커(High Definition Audio Device)"\n'
+                   'dialer:\n  adb_serial: "ce031713a9f2d74001"\n', encoding="utf-8")
+    adb = _FakeAdb()
+    audio = yaml.safe_load(cfg.read_text(encoding="utf-8"))["audio"]
+    heard = {}
+    def record(devs):
+        heard.update(devs)
+        return {"6": 0.001, "7": 0.039}  # 실제로 잰 값과 같은 차이
+    card = doctor.fix_soundcard(cfg, audio, "ce031713a9f2d74001", "adb", cards=_fake_cards(), sh=adb, record=record)
+    assert card["number"] == "7" and heard == {"6": 3, "7": 4}
+    text = cfg.read_text(encoding="utf-8")
+    assert 'call_input: "마이크(7- USB Audio Device)"   # 예전 번호' in text
+    assert 'ai_output: "스피커(7- USB Audio Device)"' in text
+    assert "# 내 메모" in text and "High Definition" in text and "ce031713a9f2d74001" in text
+    assert audio["call_input"] == "마이크(7- USB Audio Device)"
+    flat = [" ".join(c) for c in adb.cmds]
+    assert any("Beep-Beep.ogg" in c and "-s ce031713a9f2d74001" in c for c in flat)
+    assert flat[-1].endswith("KEYCODE_HOME")  # 끝나면 폰 홈 화면으로
+
+
+def test_soundcard_not_touched_when_in_call_or_unclear_or_present(tmp_path, monkeypatch):
+    from callagent import doctor
+    monkeypatch.setattr(doctor.time, "sleep", lambda s: None)
+    cfg = tmp_path / "config.yaml"
+    orig = 'audio:\n  call_input: "마이크(2- USB Audio Device)"\n  ai_output: "스피커(2- USB Audio Device)"\n'
+    cfg.write_text(orig, encoding="utf-8")
+    def never(devs):
+        raise AssertionError("통화 중에는 녹음하면 안 됨")
+    # 통화 중이면 벨소리도 안 틀고 아무것도 안 바꿈
+    adb = _FakeAdb(call_state="2")
+    assert doctor.fix_soundcard(cfg, {"call_input": "마이크(2- USB Audio Device)"}, "S", cards=_fake_cards(),
+                                sh=adb, record=never) is None
+    assert not any("Beep-Beep.ogg" in " ".join(c) for c in adb.cmds)
+    # 두 카드가 비슷하게 들리면(다른 폰 통화 소리 등) 고치지 않음
+    assert doctor.fix_soundcard(cfg, {"call_input": "마이크(2- USB Audio Device)"}, "S", cards=_fake_cards(),
+                                sh=_FakeAdb(), record=lambda d: {"6": 0.03, "7": 0.02}) is None
+    # 아무 데도 안 들리면 고치지 않음
+    assert doctor.fix_soundcard(cfg, {"call_input": "마이크(2- USB Audio Device)"}, "S", cards=_fake_cards(),
+                                sh=_FakeAdb(), record=lambda d: {"6": 0.001, "7": 0.001}) is None
+    # 장치가 그대로 있거나, 가상 케이블 방식이면 손대지 않음
+    assert doctor.fix_soundcard(cfg, {"call_input": "마이크(6- USB Audio Device)"}, "S", cards=_fake_cards(),
+                                sh=_FakeAdb(), record=never) is None
+    assert doctor.fix_soundcard(cfg, {"call_input": "CABLE Output"}, "S", cards=_fake_cards(),
+                                sh=_FakeAdb(), record=never) is None
+    assert cfg.read_text(encoding="utf-8") == orig
+
+
+def test_phones_setup_fixes_moved_soundcard(tmp_path, monkeypatch):
+    from callagent import adbtool, config, doctor
+    root = tmp_path / "proj"
+    root.mkdir()
+    (root / "config.yaml").write_text(
+        'audio:\n  call_input: "마이크(2- USB Audio Device)"\n  ai_output: "스피커(2- USB Audio Device)"\n'
+        'dialer:\n  mode: "adb"\n  adb_path: "adb"\n  adb_serial: ""\n', encoding="utf-8")
+    monkeypatch.setattr(config, "ROOT", root)
+    monkeypatch.setattr(adbtool, "fetch_adb", lambda: "adb")
+    monkeypatch.setattr(doctor, "adb_devices", lambda adb="adb": [
+        {"serial": "ce031713a9f2d74001", "state": "device", "model": "SM_G950N", "android": "9"}])
+    asked = []
+    def find(serial, adb="adb", cards=None, **kw):
+        asked.append(serial)
+        return {"number": "6", "input": "마이크(6- USB Audio Device)", "output": "스피커(6- USB Audio Device)"}, "6-번 0.039"
+    monkeypatch.setattr(doctor, "usb_cards", _fake_cards)
+    monkeypatch.setattr(doctor, "find_phone_soundcard", find)
+    doctor.setup_phones()
+    c1 = yaml.safe_load((root / "config.yaml").read_text(encoding="utf-8"))
+    assert asked == ["ce031713a9f2d74001"]
+    assert c1["audio"] == {"call_input": "마이크(6- USB Audio Device)", "ai_output": "스피커(6- USB Audio Device)"}
+    assert c1["dialer"]["adb_serial"] == "ce031713a9f2d74001"
