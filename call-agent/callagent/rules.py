@@ -25,6 +25,15 @@ def short(v: str) -> str:  # "삼 년 됐어요" → "삼 년", "한 이천 정�
     return v.strip()
 
 
+def has_number(text: str, digits: int = 7) -> bool:
+    """번호를 말했는지: 숫자 7개 이상, 또는 한글 숫자(공·일·이…)가 7개 이상이고 말의 절반 넘게 (예: "목소리가 이상해"는 아님)."""
+    if len(re.findall(r"[0-9]", text)) >= digits:
+        return True
+    ko = re.findall(r"[가-힣]", text)
+    nums = [c for c in ko if c in "공영일이삼사오육칠팔구빵"]
+    return len(nums) >= digits and len(nums) * 2 > len(ko)
+
+
 class RuleBrain:
     def __init__(self, cfg: dict, playbook: str = "", customer: dict | None = None, clips=None):
         path = resolve(cfg.get("rules", {}).get("scenarios", "scenarios.yaml"))
@@ -60,6 +69,7 @@ class RuleBrain:
         self.ended = self.handoff = False
         self.waiting: str | None = None   # 방금 질문한 항목 (예: "부위") → 상대 대답을 그대로 받아 적고 다음으로
         self.answers: dict[str, str] = {}
+        self.number_tries: dict[str, int] = {}  # need_number 질문에 번호가 아닌 대답을 한 횟수
         self.after_answer: dict | None = None  # 상황에서 물은 질문의 대답을 받은 뒤 할 일 (예: 재통화 시간 → 인사하고 끊기)
         self.last_question = ""                # 다시 물어볼 질문 녹음 (되물음에 답한 뒤)
 
@@ -149,6 +159,21 @@ class RuleBrain:
             text = retry.get("say", "")
             self.history.append(f"'{asked}' 다시 물음")
             print(f"   (판단: '{asked}' 대답이 아니라서 다시 물음)")
+            self.messages += [{"role": "user", "content": heard}, {"role": "assistant", "content": text}]
+            yield from split_tokens(text)
+            return
+        step = next((s for s in self.flow if s.get("ask") == asked), None) if asked and not sc else None
+        if step and step.get("need_number") and not has_number(heard):
+            # 번호를 물었는데 숫자가 없음 (예: "목소리가 이상해") → 번호로 적지 않음. 한 번 다시 묻고, 또 아니면 확인 후 연락으로 넘김
+            self.number_tries[asked] = self.number_tries.get(asked, 0) + 1
+            if self.number_tries[asked] <= 1:
+                text, why = step.get("number_retry") or self.last_question, f"'{asked}' 번호가 아니라서 다시 물음"
+            else:
+                text, why = self._pick("__default__", self.default.get("reply", [])), f"'{asked}' 번호를 못 받음 → 넘김"
+                self.handoff = bool(self.default.get("handoff", True))
+                self.waiting = None
+            self.history.append(why)
+            print(f"   (판단: {why})")
             self.messages += [{"role": "user", "content": heard}, {"role": "assistant", "content": text}]
             yield from split_tokens(text)
             return

@@ -1005,3 +1005,18 @@ def test_recorder_mixes_in_and_out(tmp_path):
     out = tmp_path / "call.wav"
     assert r.save(out) and out.stat().st_size > 3000
     assert not Recorder().save(tmp_path / "empty.wav")
+
+
+def test_has_number():
+    from callagent.rules import has_number
+    assert has_number("010 1234 5678") and has_number("공일공 일이삼사 오육칠팔")
+    assert not has_number("목소리가 이상해") and not has_number("네 알겠습니다")
+
+
+def test_echelon1_phone_answer_without_number_is_not_recorded():
+    b, outs = _echelon1(["네", "네 보내 주세요", "목소리가 이상해"])
+    assert outs[-1] == ["[클립:40]"] and "연락처" not in b.answers and not b.ended
+    b, outs = _echelon1(["네", "네 보내 주세요", "목소리가 이상해", "뭐라고요 안 들려요"])
+    assert b.summarize("")["status"] != "제안서발송" and "연락처" not in b.answers
+    b, outs = _echelon1(["네", "네 보내 주세요", "목소리가 이상해", "공일공 일이삼사 오육칠팔"])
+    assert b.answers["연락처"].startswith("공일공") and b.ended

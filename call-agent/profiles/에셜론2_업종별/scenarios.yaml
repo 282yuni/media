@@ -6,7 +6,7 @@ flows:
     steps:
       - {say: "[클립:7] [클립:8]", ask: "원하는 원고/이미지"}
       - {say: "[클립:12]", ask: "제안서 수락", status: "관심"}
-      - {say: "[클립:40]", ask: "연락처"}
+      - {say: "[클립:40]", ask: "연락처", need_number: true, number_retry: "[클립:40]"}
       - {say: "[클립:14] [클립:15]", status: "제안서발송", end: true}
   - name: 네일숍
     match: ["네일", "젤", "손톱"]
@@ -14,7 +14,7 @@ flows:
     steps:
       - {say: "[클립:9] [클립:11]", ask: "원하는 원고/이미지"}
       - {say: "[클립:12]", ask: "제안서 수락", status: "관심"}
-      - {say: "[클립:40]", ask: "연락처"}
+      - {say: "[클립:40]", ask: "연락처", need_number: true, number_retry: "[클립:40]"}
       - {say: "[클립:14] [클립:15]", status: "제안서발송", end: true}
   - name: 피부관리숍
     match: ["피부", "에스테틱", "관리실", "왁싱", "스킨"]
@@ -22,14 +22,14 @@ flows:
     steps:
       - {say: "[클립:10] [클립:11]", ask: "원하는 원고/이미지"}
       - {say: "[클립:12]", ask: "제안서 수락", status: "관심"}
-      - {say: "[클립:40]", ask: "연락처"}
+      - {say: "[클립:40]", ask: "연락처", need_number: true, number_retry: "[클립:40]"}
       - {say: "[클립:14] [클립:15]", status: "제안서발송", end: true}
   - name: 음식점 (기본)
     match: []
     steps:
       - {say: "[클립:4] [클립:5] [클립:6]", ask: "원하는 원고/이미지"}
       - {say: "[클립:12]", ask: "제안서 수락", status: "관심"}
-      - {say: "[클립:40]", ask: "연락처"}
+      - {say: "[클립:40]", ask: "연락처", need_number: true, number_retry: "[클립:40]"}
       - {say: "[클립:14] [클립:15]", status: "제안서발송", end: true}
 
 scenarios:

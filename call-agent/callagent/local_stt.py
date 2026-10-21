@@ -3,6 +3,9 @@
 - sherpa (기본): 한국어 전용 모델(models/ko, 약 75MB)을 같이 넣어 배포 → 설치 즉시 동작, 빠름
 - whisper: faster-whisper (pip install faster-whisper, 처음 한 번 모델을 내려받음)
 """
+import re
+from pathlib import Path
+
 import numpy as np
 
 from .config import resolve
@@ -22,11 +25,27 @@ def _sherpa(cfg: dict):
     )
 
 
+def _cuda_dlls() -> None:
+    """그래픽카드(cuda)로 돌릴 때 필요한 무료 NVIDIA 부품(pip 의 nvidia-cublas/cudnn)을 찾게 해 줌 (Windows)."""
+    import os
+    import site
+    for sp in site.getsitepackages():
+        for sub in ("cublas", "cudnn"):
+            d = Path(sp) / "nvidia" / sub / "bin"
+            if d.is_dir():
+                os.add_dll_directory(str(d))
+                os.environ["PATH"] = str(d) + os.pathsep + os.environ.get("PATH", "")
+
+
 def _whisper(cfg: dict):
     from faster_whisper import WhisperModel
     s = cfg.get("stt", {})
+    if s.get("device") == "cuda":
+        _cuda_dlls()
     print(f"   (음성 인식 모델 '{s.get('local_model', 'small')}' 불러오는 중… 처음엔 내려받느라 몇 분 걸릴 수 있어요)")
-    return WhisperModel(s.get("local_model", "small"), device=s.get("device", "cpu"), compute_type=s.get("compute_type", "int8"))
+    m = WhisperModel(s.get("local_model", "small"), device=s.get("device", "cpu"), compute_type=s.get("compute_type", "int8"))
+    list(m.transcribe(np.zeros(16000, np.float32), language="ko")[0])  # 첫 받아 적기가 2초 걸리지 않게 미리 한 번 돌려 둠
+    return m
 
 
 def engine(cfg: dict) -> str:
@@ -52,7 +71,8 @@ class LocalEars:
     def __init__(self, cfg: dict):
         self.cfg = cfg
         terms = cfg.get("voice", {}).get("keyterms") or []
-        self.prompt = "치과 상담 전화. " + ", ".join(terms) if terms else "치과 상담 전화."
+        topic = cfg.get("stt", {}).get("prompt", "치과 상담 전화.")  # 프로필마다 통화 주제 (Whisper 가 낱말을 더 잘 맞힘)
+        self.prompt = f"{topic} " + ", ".join(terms) if terms else topic
         _model(cfg)
 
     def transcribe_pcm(self, pcm: np.ndarray, rate: int) -> str:
@@ -65,8 +85,13 @@ class LocalEars:
             return s.result.text.strip()
         segments, _ = _model(self.cfg).transcribe(
             audio, language="ko", beam_size=1, initial_prompt=self.prompt, condition_on_previous_text=False,
+            # vad_filter 는 끔: 한 마디마다 1~3초 더 걸려서 대답이 늦어짐 (2026-10-21). 잡음은 no_speech_prob·아래 목록으로 거름
         )
-        return " ".join(seg.text.strip() for seg in segments).strip()
+        text = " ".join(seg.text.strip() for seg in segments if seg.no_speech_prob < 0.6).strip()
+        # Whisper 가 잡음에 자주 지어내는 말 (유튜브 자막 습관) → 못 들은 것으로
+        if re.fullmatch(r"(시청해 ?주셔서 감사합니다|구독과 좋아요|MBC 뉴스.*|자막.*|감사합니다)[.!]?", text):
+            return ""
+        return text
 
     def transcribe_call_file(self, path) -> str:
         """녹음 파일 → 문장마다 시간이 붙은 대본 (화자 구분은 못 함)."""
