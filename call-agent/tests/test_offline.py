@@ -969,3 +969,29 @@ def test_phones_setup_fixes_moved_soundcard(tmp_path, monkeypatch):
     assert asked == ["ce031713a9f2d74001"]
     assert c1["audio"] == {"call_input": "마이크(6- USB Audio Device)", "ai_output": "스피커(6- USB Audio Device)"}
     assert c1["dialer"]["adb_serial"] == "ce031713a9f2d74001"
+
+
+def _echelon1(said):
+    from callagent.rules import RuleBrain
+    b = RuleBrain(load_config(None, "에셜론1_정리본"))
+    outs = []
+    for h in said:
+        outs.append(list(b.reply(h)))
+        if b.ended or b.handoff:
+            break
+    return b, outs
+
+
+def test_echelon1_refusal_ends_right_away():
+    b, outs = _echelon1(["네", "저희 필요 없어요"])
+    assert outs[-1] == ["[클립:16]"] and b.ended and b.summarize("")["status"] == "거절"
+
+
+def test_echelon1_how_question_explains_then_asks_proposal():
+    b, outs = _echelon1(["네", "아 어떻게요?"])
+    assert outs[-1] == ["[클립:37]", "[클립:19]", "[클립:12]"] and not b.handoff
+
+
+def test_rules_short_answer_trim():
+    from callagent.rules import short
+    assert short("삼 년 됐어요") == "삼 년" and short("한 이천 정도요") == "이천"
