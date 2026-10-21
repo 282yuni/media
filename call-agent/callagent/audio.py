@@ -34,6 +34,59 @@ def find_device(name: str, kind: str) -> int | None:
     raise RuntimeError(f"오디오 장치를 못 찾았습니다: '{name}' ({kind}). `python main.py devices` 로 이름을 확인하세요.")
 
 
+class Recorder:
+    """통화 녹취: 상대 목소리(들어오는 소리)와 내보낸 녹음(나가는 소리)을 시간 맞춰 한 파일로.
+    소리 장치 콜백에서 조각만 모아 두고, 합치기는 통화가 끝난 뒤 save() 에서 한다 (통화 중 지연 없음)."""
+
+    RATE = 16000
+
+    def __init__(self):
+        self.t0 = time.monotonic()
+        self.parts: dict[str, list[bytes]] = {"in": [], "out": []}
+        self.first: dict[str, float] = {}
+        self.rates: dict[str, int] = {}
+
+    def add(self, src: str, pcm: bytes, rate: int) -> None:
+        if src not in self.first:
+            self.first[src], self.rates[src] = time.monotonic() - self.t0, rate
+        self.parts[src].append(pcm)
+
+    def save(self, path) -> bool:
+        tracks = []
+        for src, chunks in self.parts.items():
+            if not chunks:
+                continue
+            x = np.frombuffer(b"".join(chunks), dtype=np.int16).astype(np.float32)
+            r = self.rates[src]
+            if r != self.RATE:
+                n = int(len(x) * self.RATE / r)
+                x = np.interp(np.arange(n) * r / self.RATE, np.arange(len(x)), x)
+            tracks.append((int(self.first[src] * self.RATE), x))
+        if not tracks:
+            return False
+        mix = np.zeros(max(off + len(x) for off, x in tracks), dtype=np.float32)
+        for off, x in tracks:
+            mix[off:off + len(x)] += x
+        pcm = np.clip(mix, -32768, 32767).astype(np.int16)
+        if str(path).lower().endswith(".mp3"):  # 회사 제출용 mp3 (PyAV 로 인코딩, 따로 설치할 것 없음)
+            import av
+            with av.open(str(path), "w") as out:
+                st = out.add_stream("mp3", rate=self.RATE)
+                st.layout = "mono"
+                frame = av.AudioFrame.from_ndarray(pcm.reshape(1, -1), format="s16", layout="mono")
+                frame.sample_rate = self.RATE
+                for pkt in list(st.encode(frame)) + list(st.encode(None)):
+                    out.mux(pkt)
+            return True
+        import wave
+        with wave.open(str(path), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(self.RATE)
+            w.writeframes(pcm.tobytes())
+        return True
+
+
 def rms(block: np.ndarray) -> float:
     return float(np.sqrt(np.mean(np.square(block.astype(np.float32) / 32768.0)))) if len(block) else 0.0
 
@@ -57,6 +110,7 @@ class Listener:
         self.levels: deque[float] = deque(maxlen=int(10 / self.BLOCK_SEC))
         self.blocks: queue.Queue[np.ndarray] = queue.Queue()
         self.is_speaking = threading.Event()  # barge-in 감지용
+        self.recorder: Recorder | None = None  # 통화 녹취 (session 이 넣어 줌)
         self.stream = sd.InputStream(
             samplerate=self.rate, channels=1, dtype="int16", device=self.device,
             blocksize=int(self.rate * self.BLOCK_SEC), callback=self._cb,
@@ -69,6 +123,8 @@ class Listener:
         self._loud_run = self._loud_run + 1 if level >= self.threshold else 0
         if self._loud_run >= self.barge_blocks:
             self.is_speaking.set()
+        if self.recorder is not None:
+            self.recorder.add("in", block.tobytes(), self.rate)
         self.blocks.put(block)
 
     def adapt(self) -> None:
@@ -148,6 +204,7 @@ class Speaker:
         self.device = find_device(device_name, "output")
         self.buf = bytearray()
         self.lock = threading.Lock()
+        self.tap = None  # 실제로 재생한 소리를 녹취에도 넘기기 (callable(bytes))
         self.stream = sd.OutputStream(samplerate=rate, channels=1, dtype="int16",
                                       device=self.device, callback=self._cb)
         self.stream.start()
@@ -159,6 +216,8 @@ class Speaker:
             del self.buf[:need]
         if len(chunk) < need:
             chunk += b"\x00" * (need - len(chunk))
+        if self.tap is not None:
+            self.tap(chunk)
         outdata[:, 0] = np.frombuffer(chunk, dtype=np.int16)
 
     def write(self, pcm: bytes) -> None:

@@ -995,3 +995,13 @@ def test_echelon1_how_question_explains_then_asks_proposal():
 def test_rules_short_answer_trim():
     from callagent.rules import short
     assert short("삼 년 됐어요") == "삼 년" and short("한 이천 정도요") == "이천"
+
+
+def test_recorder_mixes_in_and_out(tmp_path):
+    from callagent.audio import Recorder
+    r = Recorder()
+    r.add("in", (np.ones(1600, np.int16) * 1000).tobytes(), 16000)
+    r.add("out", (np.ones(2400, np.int16) * 1000).tobytes(), 24000)
+    out = tmp_path / "call.wav"
+    assert r.save(out) and out.stat().st_size > 3000
+    assert not Recorder().save(tmp_path / "empty.wav")

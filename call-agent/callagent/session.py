@@ -7,7 +7,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from .audio import Listener, Mouth
+from .audio import Listener, Mouth, Recorder
 from .engine import make_brain, make_ears, voice_mode
 from .clips import TOKEN, ClipBank, split_tokens
 from .config import resolve
@@ -268,6 +268,11 @@ class CallSession:
             self.prepare()
         listener = Listener(self.cfg)
         mouth = Mouth(self.cfg, TTS_RATE)
+        if self.cfg["audio"].get("save_recording", True):  # 양쪽 소리 녹취 (logs/ 에 글 녹취록과 같은 이름의 mp3)
+            self.recorder = Recorder()
+            listener.recorder = self.recorder
+            if getattr(mouth, "outs", None):
+                mouth.outs[0].tap = lambda chunk: self.recorder.add("out", chunk, TTS_RATE)
         try:
             with listener:
                 if ready_prompt:
@@ -368,4 +373,12 @@ class CallSession:
         if summary:
             body += "\n\n--- 요약 ---\n" + "\n".join(f"{k}: {v}" for k, v in summary.items())
         path.write_text(body, encoding="utf-8")
+        rec = getattr(self, "recorder", None)
+        if rec is not None:
+            try:
+                out = path.with_suffix("." + self.cfg["audio"].get("recording_format", "mp3"))
+                if rec.save(out):
+                    print(f"   🎙 통화 녹취 저장: {out.name}")
+            except Exception as e:
+                print(f"   (녹취 저장 실패: {e})")
         return path
