@@ -28,7 +28,7 @@ def fix(x: np.ndarray, r: int) -> np.ndarray:
     thr = np.percentile(env, 97)
     y = np.where(env > thr, np.sign(y) * (thr + (env - thr) * 0.7), y)
     rms = np.sqrt(np.mean(y ** 2)) + 1e-6
-    return y * min(5200 / rms, 31000 / (np.abs(y).max() + 1e-6))   # 2026-10-21 소리 크게 (3200 → 5200, 약 +4dB)
+    return y * min(7500 / rms, 31500 / (np.abs(y).max() + 1e-6))   # 2026-10-21 소리 더 크게 (3200 → 5200 → 7500)
 
 
 if __name__ == "__main__":
