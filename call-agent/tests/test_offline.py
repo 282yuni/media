@@ -1020,3 +1020,8 @@ def test_echelon1_phone_answer_without_number_is_not_recorded():
     assert b.summarize("")["status"] != "제안서발송" and "연락처" not in b.answers
     b, outs = _echelon1(["네", "네 보내 주세요", "목소리가 이상해", "공일공 일이삼사 오육칠팔"])
     assert b.answers["연락처"].startswith("공일공") and b.ended
+
+
+def test_echelon1_plain_no_is_refusal():
+    b, outs = _echelon1(["네", "아니요."])
+    assert outs[-1] == ["[클립:16]"] and b.ended
