@@ -40,12 +40,12 @@ if __name__ == "__main__":
             o.setnchannels(1)
             o.setsampwidth(2)
             o.setframerate(r)
-            o.writeframes(fix(x, r).astype(np.int16).tobytes())
+            o.writeframes(np.concatenate([fix(x, r), np.zeros(int(r * 0.4))]).astype(np.int16).tobytes())   # 끝에 0.4초 여유: 끝 글자가 잘리지 않게 (말소리는 안 자름)
     print("보정 완료")
 
 # 빠르기 맞추기 (2026-10-20): 다른 문장보다 10% 넘게 빠른 녹음만 중간 빠르기(5.4 글자/초) 근처로 살짝 늦춤
 # 번호: 늦출 비율 (1보다 작을수록 느려짐). 임시 녹음(24~31·33·35)은 글과 실제 말이 달라 재지 않음
-SLOW = {11: 0.84, 18: 0.92, 20: 0.88, 22: 0.91}
+SLOW = {}   # 2026-10-21 전부 첫인사 한 톤 AI 판으로 바꿔서 늦출 문장 없음 (실제 녹음은 clips_실제녹음보관)
 if __name__ == "__main__":
     import subprocess, tempfile
     for cid, k in SLOW.items():
