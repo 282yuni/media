@@ -1,0 +1,234 @@
+<title>초벌 사업계획서</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: the page reads like a filled-in government form — ruled boxes, item numbers, one red draft stamp. */
+:root {
+  --paper: #fbfbf8;
+  --ink: #16191f;
+  --muted: #5d6470;
+  --rule: #cfd3da;
+  --cell: #f1f3f7;
+  --blue: #1d3fa6;
+  --stamp: #c8352b;
+  --sans: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #12151b; --ink: #e8eaee; --muted: #9aa1ad; --rule: #2e3440;
+    --cell: #1a1f27; --blue: #8fa8ff; --stamp: #ff6b5e; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #12151b; --ink: #e8eaee; --muted: #9aa1ad; --rule: #2e3440;
+  --cell: #1a1f27; --blue: #8fa8ff; --stamp: #ff6b5e; color-scheme: dark;
+}
+body { background: var(--paper); color: var(--ink); font-family: var(--sans); font-size: 16px; line-height: 1.65; }
+.wrap {
+  max-width: 980px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 56px;
+  display: grid; gap: 64px;
+}
+h1, h2, h3 { text-wrap: balance; margin: 0; line-height: 1.3; }
+p { margin: 0; }
+.label { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; color: var(--muted); text-transform: uppercase; }
+a { color: var(--blue); }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+
+/* top bar */
+.top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; border-bottom: 2px solid var(--ink); padding-bottom: 12px; }
+.brand { font-weight: 700; font-size: 18px; letter-spacing: -.01em; }
+.brand small { font-weight: 400; color: var(--muted); font-size: 13px; margin-left: 6px; }
+
+/* hero */
+.hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 40px; align-items: center; }
+.hero > * { min-width: 0; }
+.hero-copy { display: grid; gap: 20px; }
+.hero h1 { font-size: clamp(30px, 5vw, 46px); font-weight: 700; letter-spacing: -.02em; }
+.hero h1 em { font-style: normal; color: var(--blue); }
+.lead { font-size: 18px; color: var(--muted); max-width: 32em; }
+.cta-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--blue); color: var(--paper); text-decoration: none; font-weight: 700;
+  padding: 14px 22px; border-radius: 4px; border: 0; font-size: 16px; font-family: inherit; cursor: pointer;
+}
+.btn:hover { filter: brightness(1.1); }
+.btn[aria-disabled="true"] { background: var(--rule); color: var(--muted); cursor: default; filter: none; }
+.note { font-size: 13px; color: var(--muted); }
+
+/* the form mock */
+.sheet { border: 1.5px solid var(--ink); background: var(--paper); position: relative; font-size: 14px; }
+.sheet-head { display: flex; justify-content: space-between; gap: 8px; padding: 10px 14px; border-bottom: 1.5px solid var(--ink); font-family: var(--mono); font-size: 12px; }
+.sheet-title { text-align: center; padding: 14px; font-weight: 700; font-size: 18px; border-bottom: 1px solid var(--rule); letter-spacing: .3em; }
+.row { display: grid; grid-template-columns: 96px 1fr; border-bottom: 1px solid var(--rule); }
+.row:last-child { border-bottom: 0; }
+.row .k { background: var(--cell); padding: 12px 10px; border-right: 1px solid var(--rule); font-weight: 500; display: grid; gap: 2px; }
+.row .k b { font-family: var(--mono); color: var(--blue); font-size: 13px; }
+.row .k span { font-size: 12px; color: var(--muted); }
+.row .v { padding: 12px 14px; display: grid; gap: 7px; align-content: center; }
+.line { height: 7px; border-radius: 2px; background: var(--rule); }
+.line.ink { background: color-mix(in srgb, var(--blue) 55%, var(--rule)); }
+.stamp {
+  position: absolute; right: 18px; top: 58px; transform: rotate(-12deg);
+  border: 3px solid var(--stamp); color: var(--stamp); border-radius: 6px;
+  padding: 4px 12px; font-weight: 700; font-size: 22px; letter-spacing: .15em;
+  opacity: .85; background: color-mix(in srgb, var(--paper) 70%, transparent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .stamp { animation: press .5s .4s both cubic-bezier(.2,.9,.3,1.3); }
+  @keyframes press { from { transform: rotate(-12deg) scale(1.6); opacity: .85; } to { transform: rotate(-12deg) scale(1); opacity: .85; } }
+}
+
+/* sections */
+section { display: grid; gap: 24px; }
+section > header { display: grid; gap: 6px; border-top: 2px solid var(--ink); padding-top: 14px; }
+section h2 { font-size: clamp(22px, 3vw, 28px); letter-spacing: -.01em; }
+
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--rule); }
+.steps li { padding: 18px 16px; display: grid; gap: 8px; align-content: start; border-right: 1px solid var(--rule); min-width: 0; }
+.steps li:last-child { border-right: 0; }
+.steps .n { font-family: var(--mono); color: var(--blue); font-size: 13px; }
+.steps h3 { font-size: 17px; }
+.steps p { color: var(--muted); font-size: 15px; }
+
+.compare { width: 100%; border-collapse: collapse; font-size: 15px; }
+.compare th, .compare td { border: 1px solid var(--rule); padding: 12px 14px; text-align: left; vertical-align: top; }
+.compare thead th { background: var(--cell); font-weight: 700; }
+.compare td:first-child { font-weight: 500; white-space: nowrap; }
+.yes { color: var(--blue); font-weight: 700; }
+.no { color: var(--stamp); font-weight: 700; }
+.scroll { overflow-x: auto; }
+
+.price { display: grid; grid-template-columns: 1fr auto; gap: 20px 32px; align-items: center; border: 1.5px solid var(--ink); padding: 24px; }
+.price > * { min-width: 0; }
+.price .now { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.price .was { color: var(--muted); text-decoration: line-through; margin-right: 8px; font-size: 18px; font-weight: 400; }
+.price ul { margin: 8px 0 0; padding-left: 18px; color: var(--muted); }
+
+.faq { display: grid; gap: 0; border-top: 1px solid var(--rule); }
+.faq details { border-bottom: 1px solid var(--rule); padding: 14px 4px; }
+.faq summary { cursor: pointer; font-weight: 500; }
+.faq details p { margin-top: 10px; color: var(--muted); max-width: 42em; }
+
+footer { border-top: 2px solid var(--ink); padding-top: 16px; display: grid; gap: 8px; font-size: 14px; color: var(--muted); }
+
+@media (max-width: 760px) {
+  .wrap { gap: 48px; }
+  .hero { grid-template-columns: 1fr; gap: 28px; }
+  .steps { grid-template-columns: 1fr 1fr; }
+  .steps li:nth-child(2) { border-right: 0; }
+  .steps li:nth-child(-n+2) { border-bottom: 1px solid var(--rule); }
+  .price { grid-template-columns: 1fr; }
+}
+@media (max-width: 420px) {
+  .steps { grid-template-columns: 1fr; }
+  .steps li { border-right: 0; border-bottom: 1px solid var(--rule); }
+  .steps li:last-child { border-bottom: 0; }
+  .row { grid-template-columns: 78px 1fr; }
+}
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <div class="brand">초벌<small>사업계획서 초안 코칭</small></div>
+    <span class="label">AI 동업일지 · 실험 #01</span>
+  </div>
+
+  <div class="hero">
+    <div class="hero-copy">
+      <span class="label">정부지원사업 준비 중이신가요</span>
+      <h1>사업계획서, <em>빈 칸</em>에서 시작하지 마세요.</h1>
+      <p class="lead">30분 인터뷰만 하면 PSST 양식에 맞춘 초안을 48시간 안에 보내드립니다. 고치는 건 빈 종이를 채우는 것보다 훨씬 쉬워요.</p>
+      <div class="cta-row">
+        <a class="btn" id="cta-hero" href="#" target="_blank" rel="noopener">사전신청하기</a>
+        <span class="note">선착순 10명 · 신청 1분</span>
+      </div>
+    </div>
+
+    <div class="sheet" aria-label="사업계획서 초안 예시">
+      <div class="sheet-head"><span>[별첨 1]</span><span>예비창업패키지 양식 기준</span></div>
+      <div class="sheet-title">사업계획서</div>
+      <div class="stamp" aria-hidden="true">초 벌</div>
+      <div class="row"><div class="k"><b>P</b>문제인식<span>Problem</span></div><div class="v"><div class="line ink" style="width:92%"></div><div class="line ink" style="width:78%"></div><div class="line ink" style="width:85%"></div></div></div>
+      <div class="row"><div class="k"><b>S</b>실현가능성<span>Solution</span></div><div class="v"><div class="line ink" style="width:88%"></div><div class="line ink" style="width:64%"></div><div class="line" style="width:72%"></div></div></div>
+      <div class="row"><div class="k"><b>S</b>성장전략<span>Scale-up</span></div><div class="v"><div class="line ink" style="width:80%"></div><div class="line" style="width:90%"></div><div class="line" style="width:55%"></div></div></div>
+      <div class="row"><div class="k"><b>T</b>팀 구성<span>Team</span></div><div class="v"><div class="line ink" style="width:70%"></div><div class="line" style="width:60%"></div></div></div>
+    </div>
+  </div>
+
+  <section aria-labelledby="h-how">
+    <header><span class="label">진행 순서</span><h2 id="h-how">신청부터 초안까지 3일</h2></header>
+    <ol class="steps">
+      <li><span class="n">01 · 1분</span><h3>사전신청</h3><p>준비 중인 공고와 아이템을 한 줄로 알려주세요.</p></li>
+      <li><span class="n">02 · 30분</span><h3>질문지와 인터뷰</h3><p>아이템, 고객, 경쟁사, 팀에 대해 정해진 질문에 답하시면 됩니다.</p></li>
+      <li><span class="n">03 · 48시간</span><h3>초안 전달</h3><p>PSST 항목별 초안과 함께 비어 있는 근거 자료 목록을 드려요.</p></li>
+      <li><span class="n">04 · 1회</span><h3>수정 피드백</h3><p>직접 고친 버전을 보내주시면 한 번 더 다듬어 드립니다.</p></li>
+    </ol>
+  </section>
+
+  <section aria-labelledby="h-scope">
+    <header><span class="label">하는 일과 하지 않는 일</span><h2 id="h-scope">초안과 코칭까지만 합니다</h2></header>
+    <div class="scroll">
+      <table class="compare">
+        <thead><tr><th>항목</th><th>초벌</th><th>설명</th></tr></thead>
+        <tbody>
+          <tr><td>PSST 초안 작성</td><td class="yes">합니다</td><td>인터뷰 내용으로 항목별 초안을 씁니다.</td></tr>
+          <tr><td>공고 요건 체크</td><td class="yes">합니다</td><td>자격 요건과 평가 항목을 공고문 기준으로 정리해 드려요.</td></tr>
+          <tr><td>대리 신청·제출</td><td class="no">안 합니다</td><td>제출과 최종 내용은 대표님이 직접 확인하고 책임집니다.</td></tr>
+          <tr><td>선정 보장</td><td class="no">안 합니다</td><td>선정을 약속하거나 성공보수를 받지 않습니다.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-price">
+    <header><span class="label">가격</span><h2 id="h-price">사전신청자 10명 특별가</h2></header>
+    <div class="price">
+      <div>
+        <div class="now"><span class="was">150,000원</span>50,000원</div>
+        <ul>
+          <li>초안 1부 (PSST 4개 항목)</li>
+          <li>30분 인터뷰와 수정 피드백 1회</li>
+          <li>결제는 인터뷰 일정이 확정된 뒤에 안내드려요</li>
+        </ul>
+      </div>
+      <a class="btn" id="cta-price" href="#" target="_blank" rel="noopener">사전신청하기</a>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-faq">
+    <header><span class="label">자주 묻는 질문</span><h2 id="h-faq">신청 전에 궁금한 점</h2></header>
+    <div class="faq">
+      <details><summary>AI가 쓰는 건가요?</summary><p>네. 초안 작성에 AI를 쓰고, 그 사실을 숨기지 않습니다. 대신 인터뷰로 대표님만 아는 내용을 먼저 모으고, 사람이 끝까지 검토해서 넘겨드려요.</p></details>
+      <details><summary>어떤 공고에 쓸 수 있나요?</summary><p>예비창업패키지, 초기창업패키지처럼 PSST(문제인식·실현가능성·성장전략·팀 구성) 양식을 쓰는 창업지원사업이 대상입니다. 다른 양식은 신청서에 공고명을 적어주시면 가능한지 먼저 알려드려요.</p></details>
+      <details><summary>마감이 얼마 안 남았어요.</summary><p>인터뷰 후 48시간이 필요합니다. 마감 3일 전까지 인터뷰를 마칠 수 있으면 진행할 수 있어요.</p></details>
+      <details><summary>제 아이디어가 새어 나가지 않을까요?</summary><p>받은 내용은 초안 작성에만 쓰고, 영상이나 다른 곳에 공개하지 않습니다. 실험 결과로는 신청 건수 같은 숫자만 공개해요.</p></details>
+    </div>
+  </section>
+
+  <footer>
+    <p>초벌은 'AI 동업일지'의 첫 번째 실험입니다. 7일 동안의 사전신청 건수는 개인정보 없이 숫자로만 공개됩니다.</p>
+    <p>정부지원사업 선정 여부는 각 기관의 평가로 결정되며, 초벌은 이를 보장하지 않습니다.</p>
+  </footer>
+</div>
+
+<script>
+  // 신청 폼 주소: 네이버폼이나 구글폼 링크를 아래에 넣으면 버튼이 켜집니다.
+  const FORM_URL = "";
+  for (const id of ["cta-hero", "cta-price"]) {
+    const a = document.getElementById(id);
+    if (FORM_URL) { a.href = FORM_URL; }
+    else {
+      a.textContent = "신청 폼 준비 중";
+      a.setAttribute("aria-disabled", "true");
+      a.removeAttribute("target");
+      a.addEventListener("click", e => e.preventDefault());
+    }
+  }
+</script>
