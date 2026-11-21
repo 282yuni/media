@@ -1,0 +1,595 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>소재 탐색기</title>
+<style>
+/* 레이아웃: 위쪽 탭 + 한 열 카드 흐름. 폰에서도 한 손으로 쓰도록 한 열 우선. */
+:root {
+  --bg: #f6f7f4;
+  --surface: #ffffff;
+  --fg: #1c2420;
+  --muted: #5d6b63;
+  --line: #dde3de;
+  --accent: #2f7d55;
+  --accent-soft: #e2f0e7;
+  --t10: #2f9e5b;   /* 10만+ */
+  --t50: #2b6fd6;   /* 50만+ */
+  --t100: #d33a3a;  /* 100만+ */
+  --warn: #b7791f;
+  --font: "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121714; --surface: #1a211d; --fg: #e6ece8; --muted: #9aa8a0; --line: #2c3631;
+    --accent: #5cc08a; --accent-soft: #1f3529; --t10: #4cc27a; --t50: #5b97f0; --t100: #f06a6a; --warn: #e0a84a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121714; --surface: #1a211d; --fg: #e6ece8; --muted: #9aa8a0; --line: #2c3631;
+  --accent: #5cc08a; --accent-soft: #1f3529; --t10: #4cc27a; --t50: #5b97f0; --t100: #f06a6a; --warn: #e0a84a;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+.vid.nothumb { grid-template-columns: 1fr; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--font); }
+.wrap { max-width: 880px; margin: 0 auto; padding-block: 16px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+h1 { font-size: 1.35rem; margin: 0; letter-spacing: -0.01em; }
+h2 { font-size: 1.05rem; margin: 0 0 4px; }
+p { margin: 0; }
+.sub { color: var(--muted); font-size: 0.88rem; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.quota { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); }
+nav { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
+nav button { background: none; border: 0; border-bottom: 3px solid transparent; padding: 10px 12px; font: inherit; color: var(--muted); cursor: pointer; white-space: nowrap; }
+nav button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
+section.panel { display: grid; gap: 14px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 10px; min-width: 0; }
+label { font-size: 0.85rem; color: var(--muted); display: grid; gap: 4px; }
+input[type=text], input[type=password], select, textarea {
+  font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; width: 100%; }
+textarea { min-height: 110px; resize: vertical; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+.row > * { flex: 1 1 150px; min-width: 0; }
+.row > .shrink { flex: 0 0 auto; }
+button.btn { font: inherit; border: 1px solid var(--accent); background: var(--accent); color: #fff; border-radius: 8px; padding: 9px 14px; cursor: pointer; font-weight: 600; }
+button.btn.ghost { background: transparent; color: var(--accent); }
+button.btn:disabled { opacity: .5; cursor: default; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 999px; padding: 5px 11px; font: inherit; font-size: 0.88rem; cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.chip small { color: var(--muted); margin-left: 4px; font-family: var(--mono); }
+.notice { background: var(--accent-soft); border-radius: 8px; padding: 10px 12px; font-size: 0.88rem; }
+.notice.warn { background: transparent; border: 1px solid var(--warn); }
+.err { color: var(--t100); font-size: 0.88rem; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { color: var(--muted); font-weight: 500; font-size: 0.8rem; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); }
+.scroll { overflow-x: auto; }
+.vids { display: grid; gap: 10px; }
+.vid { display: grid; grid-template-columns: 120px 1fr; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+.vid img { width: 120px; aspect-ratio: 16/9; object-fit: cover; border-radius: 6px; background: var(--line); max-width: 100%; }
+.vid .body { min-width: 0; display: grid; gap: 4px; }
+.vid a.title { color: var(--fg); font-weight: 600; text-decoration: none; overflow-wrap: anywhere; }
+.vid a.title:hover { text-decoration: underline; }
+.meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 0.82rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.badge { display: inline-block; border-radius: 4px; padding: 1px 7px; font-size: 0.78rem; font-weight: 700; color: #fff; font-family: var(--mono); }
+.b10 { background: var(--t10); } .b50 { background: var(--t50); } .b100 { background: var(--t100); } .b0 { background: var(--muted); }
+.tag { display: inline-block; border: 1px solid currentColor; border-radius: 4px; padding: 0 6px; font-size: 0.75rem; font-weight: 600; }
+.tag.rise { color: var(--t100); } .tag.dead { color: var(--muted); } .tag.hot { color: var(--warn); }
+.actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.actions button { font: inherit; font-size: 0.8rem; border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 6px; padding: 3px 9px; cursor: pointer; }
+.spark { width: 100%; max-width: 220px; height: 36px; }
+.empty { color: var(--muted); font-size: 0.9rem; padding: 8px 0; }
+.example { font-size: 0.75rem; color: var(--warn); font-weight: 600; }
+@media (max-width: 480px) {
+  .vid { grid-template-columns: 1fr; }
+  .vid img { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>소재 탐색기</h1>
+      <p class="sub">잘 터지는 주제를 찾아 <b>내 방식으로 새로 만들기</b> 위한 도구</p>
+    </div>
+    <span class="quota" id="quota" title="YouTube Data API 하루 기본 한도는 10,000 단위">오늘 사용: 0 / 10,000</span>
+  </header>
+
+  <nav role="tablist" id="tabs">
+    <button role="tab" data-tab="find" aria-selected="true">① 키워드 찾기</button>
+    <button role="tab" data-tab="check" aria-selected="false">② 키워드 검증</button>
+    <button role="tab" data-tab="videos" aria-selected="false">③ 영상 분석</button>
+    <button role="tab" data-tab="watch" aria-selected="false">④ 관심 목록</button>
+    <button role="tab" data-tab="settings" aria-selected="false">설정</button>
+  </nav>
+
+  <!-- ① 키워드 찾기 -->
+  <section class="panel" data-panel="find">
+    <div class="card">
+      <h2>유튜브 자동완성으로 넓히기</h2>
+      <p class="sub">씨앗 키워드를 넣으면 사람들이 실제로 검색하는 연관 검색어를 가져와요. (API 한도 안 씀)</p>
+      <div class="row">
+        <label>씨앗 키워드<input type="text" id="seed" placeholder="예: 시상식, 개구리, 청소 꿀팁"></label>
+        <button class="btn shrink" id="btnSuggest">연관어 가져오기</button>
+      </div>
+      <p class="err" id="suggestErr" hidden></p>
+    </div>
+    <div class="card">
+      <h2>제목 붙여넣기로 뽑기</h2>
+      <p class="sub">유튜브 홈·인기 쇼츠에서 눈에 띈 제목들을 복사해 붙여넣으면 자주 나오는 단어를 뽑아요.</p>
+      <textarea id="titles" placeholder="제목을 한 줄에 하나씩 붙여넣기"></textarea>
+      <div class="row"><button class="btn ghost shrink" id="btnExtract">키워드 뽑기</button></div>
+    </div>
+    <div class="card">
+      <div class="row" style="align-items:center">
+        <h2 style="flex:1 1 auto">후보 키워드 <span class="sub" id="candCount"></span></h2>
+        <button class="btn shrink" id="btnToCheck">선택한 키워드 검증하기 →</button>
+      </div>
+      <p class="sub">눌러서 선택하세요. 관심 있는 3~5개만 고르는 게 한도 아끼는 요령이에요.</p>
+      <div class="chips" id="cands"></div>
+    </div>
+  </section>
+
+  <!-- ② 키워드 검증 -->
+  <section class="panel" data-panel="check" hidden>
+    <div class="card">
+      <h2>조건</h2>
+      <div class="row">
+        <label>기간<select id="period">
+          <option value="30">최근 1개월</option><option value="90">최근 3개월</option>
+          <option value="180" selected>최근 6개월</option><option value="365">최근 1년</option><option value="0">전체</option>
+        </select></label>
+        <label>길이<select id="duration">
+          <option value="short" selected>쇼츠(4분 미만)</option><option value="medium">4~20분</option><option value="any">전체</option>
+        </select></label>
+        <label>지역<select id="region">
+          <option value="KR" selected>한국</option><option value="JP">일본</option><option value="US">미국</option>
+        </select></label>
+      </div>
+      <p class="sub">키워드 1개 검증 = 약 102단위. 하루 한도로 키워드 90개 정도 검증할 수 있어요.</p>
+      <div class="row"><button class="btn shrink" id="btnCheck">검증 시작</button></div>
+      <p class="err" id="checkErr" hidden></p>
+    </div>
+    <div class="card">
+      <h2>결과</h2>
+      <p class="sub">키워드별 상위 50개 영상 중 조회수 구간별 개수. 큰 숫자가 많을수록 "이 주제로 만들면 이 정도는 기대할 만하다"는 근거예요.</p>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>키워드</th><th class="num">10만+</th><th class="num">50만+</th><th class="num">100만+</th><th class="num">500만+</th><th class="num">중간값</th><th></th></tr></thead>
+          <tbody id="checkBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ③ 영상 분석 -->
+  <section class="panel" data-panel="videos" hidden>
+    <div class="card">
+      <div class="row">
+        <label>보기<select id="vidKeyword"></select></label>
+        <label>정렬<select id="vidSort">
+          <option value="views">조회수 높은 순</option>
+          <option value="ratio">구독자 대비 조회수(떡상) 순</option>
+          <option value="perday">하루 평균 조회수 순</option>
+          <option value="date">최신 순</option>
+        </select></label>
+        <label>최소 조회수<select id="vidMin">
+          <option value="0">전체</option><option value="100000">10만+</option><option value="500000">50만+</option><option value="1000000" selected>100만+</option>
+        </select></label>
+      </div>
+      <p class="sub"><span class="badge b10">10만+</span> <span class="badge b50">50만+</span> <span class="badge b100">100만+</span> · <span class="tag hot">구독자의 10배+</span> 작은 채널에서 터진 영상 = 채널 힘이 아니라 소재 힘</p>
+    </div>
+    <div class="vids" id="vidList"></div>
+  </section>
+
+  <!-- ④ 관심 목록 -->
+  <section class="panel" data-panel="watch" hidden>
+    <div class="card">
+      <div class="row" style="align-items:center">
+        <div style="flex:1 1 220px">
+          <h2>관심 목록</h2>
+          <p class="sub">저장한 영상의 조회수를 새로고침할 때마다 기록해요. 며칠 간격으로 모으면 <b>죽었다 다시 뜨는 소재</b>가 보여요.</p>
+        </div>
+        <button class="btn shrink" id="btnRefresh">조회수 새로고침</button>
+        <button class="btn ghost shrink" id="btnExport">아이디어 메모 복사</button>
+      </div>
+      <p class="sub"><span class="tag rise">재상승</span> 최근 하루 증가량이 평생 평균의 1.5배 이상 · <span class="tag dead">정체</span> 최근 증가가 평생 평균의 10% 미만</p>
+      <p class="err" id="watchErr" hidden></p>
+      <textarea id="exportBox" hidden readonly></textarea>
+    </div>
+    <div class="vids" id="watchList"></div>
+  </section>
+
+  <!-- 설정 -->
+  <section class="panel" data-panel="settings" hidden>
+    <div class="card">
+      <h2>YouTube API 키</h2>
+      <p class="sub">무료로 발급돼요. Google Cloud Console → 새 프로젝트 → "YouTube Data API v3" 사용 설정 → 사용자 인증 정보 → API 키 만들기. 키는 이 브라우저에만 저장돼요.</p>
+      <div class="row">
+        <label>API 키<input type="password" id="apiKey" autocomplete="off" placeholder="AIza..."></label>
+        <button class="btn shrink" id="btnSaveKey">저장</button>
+      </div>
+      <p class="sub" id="keyState"></p>
+    </div>
+    <div class="card">
+      <h2>예시 데이터</h2>
+      <p class="sub">API 키 없이 화면을 둘러볼 수 있게 가짜 예시 데이터를 넣어요. 실제 영상이 아니에요.</p>
+      <div class="row"><button class="btn ghost shrink" id="btnDemo">예시 데이터 불러오기</button><button class="btn ghost shrink" id="btnReset">모든 데이터 지우기</button></div>
+    </div>
+    <div class="card notice warn">
+      <h2>이 도구에 없는 기능</h2>
+      <p>남의 영상을 링크로 받아 잘라 올리는 자동 편집 기능은 넣지 않았어요. 허락 없이 다른 사람의 영상을 다시 올리면 저작권 경고와 수익 정지, 채널 삭제로 이어질 수 있어요. 여기서 찾은 주제는 <b>직접 찍거나 직접 만든 영상</b>으로 풀어 주세요.</p>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  const $ = (s, el = document) => el.querySelector(s);
+  const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+  const API = "https://www.googleapis.com/youtube/v3/";
+
+  // ---------- 저장소 ----------
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("gr_" + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem("gr_" + k, JSON.stringify(v)); } catch {} },
+    clear() { try { Object.keys(localStorage).filter(k => k.startsWith("gr_")).forEach(k => localStorage.removeItem(k)); } catch {} }
+  };
+  const state = {
+    key: store.get("key", ""),
+    cands: store.get("cands", []),            // [{w, n, on}]
+    results: store.get("results", {}),        // keyword -> {videos:[...], at}
+    watch: store.get("watch", {}),            // id -> {video, snaps:[{t,v}], note}
+    quota: store.get("quota", { day: "", used: 0 }),
+  };
+  const save = () => { store.set("cands", state.cands); store.set("results", state.results); store.set("watch", state.watch); store.set("quota", state.quota); };
+
+  // ---------- 숫자 포맷 ----------
+  const fmt = n => {
+    if (n == null || isNaN(n)) return "-";
+    if (n >= 1e8) return (n / 1e8).toFixed(1).replace(/\.0$/, "") + "억";
+    if (n >= 1e4) return (n / 1e4).toFixed(n >= 1e5 ? 0 : 1).replace(/\.0$/, "") + "만";
+    return Math.round(n).toLocaleString("ko-KR");
+  };
+  const tierClass = v => v >= 1e6 ? "b100" : v >= 5e5 ? "b50" : v >= 1e5 ? "b10" : "b0";
+  const daysSince = iso => Math.max(1, (Date.now() - new Date(iso).getTime()) / 864e5);
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const today = () => new Date().toISOString().slice(0, 10);
+
+  // ---------- 한도 표시 ----------
+  function addQuota(u) {
+    if (state.quota.day !== today()) state.quota = { day: today(), used: 0 };
+    state.quota.used += u; save(); renderQuota();
+  }
+  function renderQuota() {
+    const used = state.quota.day === today() ? state.quota.used : 0;
+    $("#quota").textContent = `오늘 사용: ${used.toLocaleString()} / 10,000`;
+  }
+
+  // ---------- 탭 ----------
+  function showTab(name) {
+    $$("#tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
+    $$("section.panel").forEach(p => p.hidden = p.dataset.panel !== name);
+    if (name === "videos") renderVideos();
+    if (name === "watch") renderWatch();
+    if (name === "check") renderCheck();
+  }
+  $$("#tabs button").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
+
+  // ---------- API ----------
+  async function yt(path, params, cost) {
+    if (!state.key) throw new Error("설정 탭에서 API 키를 먼저 저장해 주세요.");
+    const u = new URL(API + path);
+    Object.entries({ ...params, key: state.key }).forEach(([k, v]) => v !== "" && v != null && u.searchParams.set(k, v));
+    const r = await fetch(u);
+    addQuota(cost);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const reason = j?.error?.errors?.[0]?.reason || "";
+      if (reason === "quotaExceeded") throw new Error("오늘 API 한도를 다 썼어요. 한국 시간 오후 4~5시쯤(태평양 자정) 초기화돼요.");
+      if (reason === "keyInvalid" || r.status === 400) throw new Error("API 키가 올바르지 않아요. 설정 탭에서 다시 확인해 주세요.");
+      if (r.status === 403) throw new Error("API 키 권한 문제예요. YouTube Data API v3가 사용 설정됐는지, 키 제한(웹사이트 제한)이 이 주소를 막고 있지 않은지 확인해 주세요.");
+      throw new Error(j?.error?.message || "요청 실패 (" + r.status + ")");
+    }
+    return j;
+  }
+  async function fetchVideos(ids) {
+    const out = [];
+    for (let i = 0; i < ids.length; i += 50) {
+      const j = await yt("videos", { part: "snippet,statistics,contentDetails", id: ids.slice(i, i + 50).join(",") }, 1);
+      out.push(...(j.items || []));
+    }
+    return out;
+  }
+  async function fetchChannels(ids) {
+    const map = {};
+    const uniq = [...new Set(ids)];
+    for (let i = 0; i < uniq.length; i += 50) {
+      const j = await yt("channels", { part: "statistics", id: uniq.slice(i, i + 50).join(",") }, 1);
+      (j.items || []).forEach(c => map[c.id] = c.statistics.hiddenSubscriberCount ? null : +c.statistics.subscriberCount);
+    }
+    return map;
+  }
+  function toVideo(item, subs) {
+    return {
+      id: item.id, title: item.snippet.title, channel: item.snippet.channelTitle, channelId: item.snippet.channelId,
+      published: item.snippet.publishedAt, thumb: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url || "",
+      views: +(item.statistics.viewCount || 0), likes: +(item.statistics.likeCount || 0), comments: +(item.statistics.commentCount || 0),
+      subs: subs[item.snippet.channelId] ?? null,
+    };
+  }
+
+  // ---------- ① 자동완성 (JSONP) ----------
+  function suggest(q) {
+    return new Promise((resolve, reject) => {
+      const cb = "grcb" + Date.now() + "_" + (++suggest.n);
+      const s = document.createElement("script");
+      const timer = setTimeout(() => { cleanup(); reject(new Error("응답이 없어요. 잠시 뒤 다시 시도해 주세요.")); }, 8000);
+      function cleanup() { clearTimeout(timer); delete window[cb]; s.remove(); }
+      window[cb] = data => { cleanup(); resolve((data?.[1] || []).map(x => Array.isArray(x) ? x[0] : x)); };
+      s.charset = "utf-8";
+      s.src = "https://suggestqueries.google.com/complete/search?client=youtube&ds=yt&hl=ko&gl=KR&q=" + encodeURIComponent(q) + "&callback=" + cb;
+      s.onerror = () => { cleanup(); reject(new Error("연관어를 불러오지 못했어요.")); };
+      document.head.appendChild(s);
+    });
+  }
+  suggest.n = 0;
+  function addCands(words, counts) {
+    const have = new Set(state.cands.map(c => c.w));
+    words.forEach((w, i) => { w = w.trim(); if (w && !have.has(w)) { state.cands.push({ w, n: counts?.[i] ?? null, on: false }); have.add(w); } });
+    save(); renderCands();
+  }
+  $("#btnSuggest").addEventListener("click", async () => {
+    const q = $("#seed").value.trim(); const err = $("#suggestErr"); err.hidden = true;
+    if (!q) { err.textContent = "씨앗 키워드를 입력해 주세요."; err.hidden = false; return; }
+    const btn = $("#btnSuggest"); btn.disabled = true; btn.textContent = "가져오는 중…";
+    try {
+      const list = await suggest(q);
+      // 한 단계 더: 씨앗 + ㄱ~ㅎ 대신 상위 3개 연관어로 한 번 더 확장
+      const more = (await Promise.allSettled(list.slice(0, 3).map(suggest))).flatMap(r => r.status === "fulfilled" ? r.value : []);
+      addCands([q, ...list, ...more]);
+    } catch (e) { err.textContent = e.message; err.hidden = false; }
+    btn.disabled = false; btn.textContent = "연관어 가져오기";
+  });
+
+  // ---------- ① 제목에서 키워드 뽑기 ----------
+  const STOP = new Set("그리고 하지만 그래서 진짜 정말 너무 이거 저거 그거 이런 저런 그런 이게 근데 오늘 지금 우리 여러분 영상 쇼츠 shorts 구독 좋아요 ㅋㅋ ㅋㅋㅋ ㅎㅎ 결국 역대급 레전드 반응 하는 했던 있는 없는 되는 같은 대한 위한 보고 하고 해서 많이 처음 다시 모든 뭐가 어떻게 이유 the and for with you this that".split(" "));
+  const JOSA = /(은|는|이|가|을|를|의|에|에서|에게|으로|로|와|과|도|만|까지|부터|이랑|랑|한테|처럼|보다|이다|입니다|했다|하는|한|들)$/;
+  function extract(text) {
+    const freq = new Map();
+    text.split(/\n+/).forEach(line => {
+      const seen = new Set();
+      line.replace(/#\S+/g, " ").split(/[^0-9A-Za-z가-힣]+/).forEach(raw => {
+        let w = raw.toLowerCase();
+        if (/[가-힣]/.test(w) && w.length > 2) w = w.replace(JOSA, "");
+        if (w.length < 2 || STOP.has(w) || /^\d+$/.test(w) || seen.has(w)) return;
+        seen.add(w); freq.set(w, (freq.get(w) || 0) + 1);
+      });
+    });
+    return [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 40);
+  }
+  $("#btnExtract").addEventListener("click", () => {
+    const top = extract($("#titles").value);
+    addCands(top.map(t => t[0]), top.map(t => t[1]));
+  });
+
+  function renderCands() {
+    const box = $("#cands"); box.innerHTML = "";
+    if (!state.cands.length) { box.innerHTML = '<p class="empty">아직 후보가 없어요. 위에서 연관어를 가져오거나 제목을 붙여넣어 보세요.</p>'; }
+    state.cands.forEach((c, i) => {
+      const b = document.createElement("button");
+      b.className = "chip"; b.type = "button"; b.setAttribute("aria-pressed", String(!!c.on));
+      b.innerHTML = esc(c.w) + (c.n ? `<small>${c.n}</small>` : "");
+      b.addEventListener("click", () => { c.on = !c.on; save(); renderCands(); });
+      box.appendChild(b);
+    });
+    const on = state.cands.filter(c => c.on).length;
+    $("#candCount").textContent = state.cands.length ? `${state.cands.length}개 중 ${on}개 선택` : "";
+  }
+  $("#btnToCheck").addEventListener("click", () => showTab("check"));
+
+  // ---------- ② 검증 ----------
+  async function checkKeyword(kw) {
+    const days = +$("#period").value, dur = $("#duration").value, region = $("#region").value;
+    const params = { part: "id", type: "video", q: kw, maxResults: 50, order: "viewCount", regionCode: region,
+      relevanceLanguage: region === "JP" ? "ja" : region === "US" ? "en" : "ko" };
+    if (days) params.publishedAfter = new Date(Date.now() - days * 864e5).toISOString();
+    if (dur !== "any") params.videoDuration = dur;
+    const s = await yt("search", params, 100);
+    const ids = (s.items || []).map(i => i.id.videoId).filter(Boolean);
+    const items = ids.length ? await fetchVideos(ids) : [];
+    const subs = items.length ? await fetchChannels(items.map(i => i.snippet.channelId)) : {};
+    state.results[kw] = { at: Date.now(), cond: { days, dur, region }, videos: items.map(i => toVideo(i, subs)) };
+    save();
+  }
+  $("#btnCheck").addEventListener("click", async () => {
+    const err = $("#checkErr"); err.hidden = true;
+    const kws = state.cands.filter(c => c.on).map(c => c.w);
+    if (!kws.length) { err.textContent = "① 키워드 찾기 탭에서 검증할 키워드를 먼저 선택해 주세요."; err.hidden = false; return; }
+    const btn = $("#btnCheck"); btn.disabled = true;
+    for (let i = 0; i < kws.length; i++) {
+      btn.textContent = `검증 중… (${i + 1}/${kws.length})`;
+      try { await checkKeyword(kws[i]); renderCheck(); }
+      catch (e) { err.textContent = e.message; err.hidden = false; break; }
+    }
+    btn.disabled = false; btn.textContent = "검증 시작";
+  });
+  function stats(videos) {
+    const v = videos.map(x => x.views).sort((a, b) => a - b);
+    const c = t => v.filter(x => x >= t).length;
+    return { c10: c(1e5), c50: c(5e5), c100: c(1e6), c500: c(5e6), med: v.length ? v[Math.floor(v.length / 2)] : 0 };
+  }
+  function renderCheck() {
+    const body = $("#checkBody"); body.innerHTML = "";
+    const kws = Object.keys(state.results);
+    if (!kws.length) { body.innerHTML = '<tr><td colspan="7" class="empty">아직 검증한 키워드가 없어요.</td></tr>'; return; }
+    kws.sort((a, b) => stats(state.results[b].videos).c100 - stats(state.results[a].videos).c100).forEach(kw => {
+      const r = state.results[kw], s = stats(r.videos);
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${esc(kw)}${r.demo ? ' <span class="example">예시</span>' : ""}</td><td class="num">${s.c10}</td><td class="num">${s.c50}</td><td class="num">${s.c100}</td><td class="num">${s.c500}</td><td class="num">${fmt(s.med)}</td><td><button class="chip" type="button">영상 보기</button></td>`;
+      tr.querySelector("button").addEventListener("click", () => { pendingKw = kw; showTab("videos"); });
+      body.appendChild(tr);
+    });
+  }
+
+  // ---------- ③ 영상 ----------
+  let pendingKw = null;
+  function videoCard(v, opts = {}) {
+    const d = daysSince(v.published), perDay = v.views / d, ratio = v.subs ? v.views / v.subs : null;
+    const el = document.createElement("article"); el.className = v.thumb ? "vid" : "vid nothumb";
+    const url = "https://www.youtube.com/watch?v=" + encodeURIComponent(v.id);
+    el.innerHTML = `
+      ${v.thumb ? `<img src="${esc(v.thumb)}" alt="" loading="lazy">` : ""}
+      <div class="body">
+        <a class="title" href="${url}" target="_blank" rel="noopener">${esc(v.title)}</a>
+        <div class="meta"><span>${esc(v.channel)}</span><span>구독 ${v.subs == null ? "비공개" : fmt(v.subs)}</span>${v.demo ? '<span class="example">예시</span>' : ""}</div>
+        <div class="meta">
+          <span class="badge ${tierClass(v.views)}">${fmt(v.views)}회</span>
+          <span>${v.published.slice(0, 10)} (${Math.round(d)}일 전)</span>
+          <span>하루 평균 ${fmt(perDay)}</span>
+          ${ratio != null && ratio >= 10 ? `<span class="tag hot">구독자의 ${Math.round(ratio)}배</span>` : ""}
+          ${opts.trend || ""}
+        </div>
+        ${opts.extra || ""}
+        <div class="actions"></div>
+      </div>`;
+    return el;
+  }
+  function renderVideos() {
+    const sel = $("#vidKeyword"), cur = pendingKw ?? sel.value; pendingKw = null;
+    const kws = Object.keys(state.results);
+    sel.innerHTML = kws.map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join("");
+    if (kws.includes(cur)) sel.value = cur;
+    const list = $("#vidList"); list.innerHTML = "";
+    const r = state.results[sel.value];
+    if (!r) { list.innerHTML = '<p class="empty">② 키워드 검증을 먼저 해 주세요.</p>'; return; }
+    const min = +$("#vidMin").value, sort = $("#vidSort").value;
+    const key = { views: v => v.views, ratio: v => v.subs ? v.views / v.subs : 0, perday: v => v.views / daysSince(v.published), date: v => +new Date(v.published) }[sort];
+    const vids = r.videos.filter(v => v.views >= min).sort((a, b) => key(b) - key(a));
+    if (!vids.length) { list.innerHTML = '<p class="empty">조건에 맞는 영상이 없어요. 최소 조회수를 낮춰 보세요.</p>'; return; }
+    vids.forEach(v => {
+      const el = videoCard(v);
+      const b = document.createElement("button"); const saved = !!state.watch[v.id];
+      b.textContent = saved ? "관심 목록에 있음" : "+ 관심 목록"; b.disabled = saved; b.type = "button";
+      b.addEventListener("click", () => {
+        state.watch[v.id] = { video: v, note: "", snaps: [{ t: Date.now(), v: v.views }] }; save();
+        b.textContent = "관심 목록에 있음"; b.disabled = true;
+      });
+      $(".actions", el).appendChild(b); list.appendChild(el);
+    });
+  }
+  ["#vidKeyword", "#vidSort", "#vidMin"].forEach(s => $(s).addEventListener("change", renderVideos));
+
+  // ---------- ④ 관심 목록 ----------
+  function trendOf(w) {
+    const s = w.snaps; if (s.length < 2) return null;
+    const a = s[s.length - 2], b = s[s.length - 1];
+    const days = Math.max((b.t - a.t) / 864e5, 1 / 24);
+    const recent = (b.v - a.v) / days;
+    const life = w.video.views / daysSince(w.video.published);
+    return { recent, life, ratio: life ? recent / life : 0 };
+  }
+  function sparkline(snaps) {
+    if (snaps.length < 2) return "";
+    const W = 220, H = 36, P = 3;
+    const t0 = snaps[0].t, t1 = snaps[snaps.length - 1].t, v0 = Math.min(...snaps.map(s => s.v)), v1 = Math.max(...snaps.map(s => s.v));
+    const x = t => P + (t1 === t0 ? 0 : (t - t0) / (t1 - t0)) * (W - 2 * P);
+    const y = v => H - P - (v1 === v0 ? 0.5 : (v - v0) / (v1 - v0)) * (H - 2 * P);
+    const pts = snaps.map(s => `${x(s.t).toFixed(1)},${y(s.v).toFixed(1)}`).join(" ");
+    const last = snaps[snaps.length - 1];
+    return `<svg class="spark" viewBox="0 0 ${W} ${H}" role="img" aria-label="조회수 기록 ${snaps.length}회">
+      <polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2"/>
+      <circle cx="${x(last.t).toFixed(1)}" cy="${y(last.v).toFixed(1)}" r="3" fill="var(--accent)"/></svg>`;
+  }
+  function renderWatch() {
+    const list = $("#watchList"); list.innerHTML = "";
+    const items = Object.values(state.watch);
+    if (!items.length) { list.innerHTML = '<p class="empty">③ 영상 분석에서 "+ 관심 목록"을 눌러 저장해 보세요.</p>'; return; }
+    items.sort((a, b) => (trendOf(b)?.ratio ?? -1) - (trendOf(a)?.ratio ?? -1)).forEach(w => {
+      const tr = trendOf(w);
+      let tag = "";
+      if (tr) {
+        if (tr.ratio >= 1.5 && daysSince(w.video.published) > 30) tag = `<span class="tag rise">재상승 ×${tr.ratio.toFixed(1)}</span>`;
+        else if (tr.ratio < 0.1) tag = `<span class="tag dead">정체</span>`;
+        tag += `<span>최근 하루 +${fmt(Math.max(0, tr.recent))}</span>`;
+      } else tag = `<span>기록 ${w.snaps.length}회 · 새로고침하면 추세가 보여요</span>`;
+      const el = videoCard(w.video, { trend: tag, extra: sparkline(w.snaps) +
+        `<label>내 방식으로 만들 아이디어<textarea id="note-${esc(w.video.id)}" style="min-height:60px" placeholder="예: 같은 주제를 우리 집 개구리로 직접 찍어서 밸런스 게임으로">${esc(w.note)}</textarea></label>` });
+      $("textarea", el).addEventListener("input", e => { w.note = e.target.value; save(); });
+      const del = document.createElement("button"); del.type = "button"; del.textContent = "삭제";
+      del.addEventListener("click", () => { delete state.watch[w.video.id]; save(); renderWatch(); });
+      $(".actions", el).appendChild(del); list.appendChild(el);
+    });
+  }
+  $("#btnRefresh").addEventListener("click", async () => {
+    const err = $("#watchErr"); err.hidden = true;
+    const ids = Object.keys(state.watch).filter(id => !state.watch[id].video.demo);
+    if (!ids.length) { err.textContent = "새로고침할 실제 영상이 없어요. (예시 데이터는 새로고침되지 않아요)"; err.hidden = false; return; }
+    const btn = $("#btnRefresh"); btn.disabled = true; btn.textContent = "새로고침 중…";
+    try {
+      const items = await fetchVideos(ids); const now = Date.now();
+      items.forEach(it => {
+        const w = state.watch[it.id]; if (!w) return;
+        const views = +(it.statistics.viewCount || 0);
+        w.video.views = views; w.video.likes = +(it.statistics.likeCount || 0); w.video.comments = +(it.statistics.commentCount || 0);
+        const last = w.snaps[w.snaps.length - 1];
+        if (now - last.t < 3600e3) last.v = views, last.t = now; else w.snaps.push({ t: now, v: views });
+        if (w.snaps.length > 60) w.snaps.splice(0, w.snaps.length - 60);
+      });
+      save(); renderWatch();
+    } catch (e) { err.textContent = e.message; err.hidden = false; }
+    btn.disabled = false; btn.textContent = "조회수 새로고침";
+  });
+  $("#btnExport").addEventListener("click", async () => {
+    const txt = Object.values(state.watch).filter(w => w.note.trim()).map(w =>
+      `■ ${w.video.title}\n  참고: https://youtu.be/${w.video.id} (${fmt(w.video.views)}회)\n  내 아이디어: ${w.note.trim()}`).join("\n\n");
+    const box = $("#exportBox");
+    if (!txt) { box.hidden = false; box.value = "아이디어를 적은 영상이 아직 없어요."; return; }
+    try { await navigator.clipboard.writeText(txt); $("#btnExport").textContent = "복사했어요"; setTimeout(() => $("#btnExport").textContent = "아이디어 메모 복사", 1500); }
+    catch { box.hidden = false; box.value = txt; box.select(); }
+  });
+
+  // ---------- 설정 ----------
+  function renderKey() { $("#keyState").textContent = state.key ? "저장된 키: " + state.key.slice(0, 6) + "…" + state.key.slice(-4) : "저장된 키가 없어요."; }
+  $("#btnSaveKey").addEventListener("click", () => { state.key = $("#apiKey").value.trim(); store.set("key", state.key); $("#apiKey").value = ""; renderKey(); });
+  $("#btnReset").addEventListener("click", function () {
+    if (this.dataset.armed !== "1") { this.dataset.armed = "1"; this.textContent = "한 번 더 누르면 지워져요"; return; }
+    store.clear(); location.reload();
+  });
+  $("#btnDemo").addEventListener("click", () => { loadDemo(); showTab("check"); });
+
+  function loadDemo() {
+    const day = 864e5, now = Date.now();
+    const mk = (id, title, channel, subs, views, ago) => ({ id: "demo" + id, title, channel, channelId: "c" + id, subs, views, published: new Date(now - ago * day).toISOString(), thumb: "", likes: 0, comments: 0, demo: true });
+    const sets = {
+      "개구리": [mk(1, "개구리가 밸런스 게임을 한다면?", "작은연못", 3200, 1840000, 40), mk(2, "청개구리 키우기 1년 변화", "양서류일기", 81000, 920000, 210), mk(3, "개구리 울음소리 ASMR", "숲소리", 15000, 310000, 400), mk(4, "개구리 먹이 주는 법", "펫팁", 230000, 120000, 15)],
+      "청소 꿀팁": [mk(5, "아무도 안 씻는 곳 7군데", "살림하는집", 9000, 2600000, 120), mk(6, "욕실 곰팡이 10초 제거", "정리왕", 410000, 1300000, 300), mk(7, "세탁기 청소 이렇게 하세요", "생활의팁", 52000, 640000, 30)],
+      "시상식": [mk(8, "시상식 수상소감 레전드 모음", "연예클립", 1200000, 5400000, 90), mk(9, "시상식 MC 애드리브", "방송짤", 300000, 870000, 60)],
+    };
+    Object.entries(sets).forEach(([k, v]) => state.results[k] = { at: now, demo: true, videos: v });
+    ["개구리", "청소 꿀팁", "시상식"].forEach(w => { if (!state.cands.some(c => c.w === w)) state.cands.push({ w, n: null, on: false }); });
+    const w = sets["청소 꿀팁"][0];
+    state.watch[w.id] = { video: w, note: "우리 집 욕실 실제로 청소하면서 전후 비교로 찍기", snaps: [{ t: now - 9 * day, v: 2470000 }, { t: now - 5 * day, v: 2482000 }, { t: now - 2 * day, v: 2490000 }, { t: now, v: 2600000 }] };
+    save(); renderCands();
+  }
+
+  // ---------- 시작 ----------
+  renderQuota(); renderKey(); renderCands();
+  if (!state.key && !Object.keys(state.results).length) loadDemo();
+})();
+</script>
+</body>
+</html>
