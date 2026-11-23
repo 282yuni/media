@@ -1,0 +1,8 @@
+anthropic>=0.80
+pydantic>=2
+requests
+pillow
+fastapi
+uvicorn
+python-multipart
+edge-tts
